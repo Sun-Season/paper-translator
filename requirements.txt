@@ -1,0 +1,11 @@
+pdf2zh-next==2.9.0
+babeldoc==0.6.2
+pypdfium2>=4.30,<6
+Pillow>=10
+bitstring>=4.2,<5
+PyMuPDF==1.25.2
+numpy>=1.26
+python-dotenv>=1
+lxml>=5
+pypandoc_binary>=1.17,<2
+opencv-python-headless>=4.8
