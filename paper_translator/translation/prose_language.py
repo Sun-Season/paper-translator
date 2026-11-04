@@ -83,7 +83,7 @@ def source_pages(source):
 
 def translate_gaps(args,passage):
     """占位符被模型改写时，只翻译受保护片段之间的文字。"""
-    from translate import request_blocks
+    from paper_translator.cli import request_blocks
     pattern=re.compile(PROTECTED.pattern+r"|\d+(?:[,.]\d+)*",re.M)
     pieces=[];gaps={};end=0
     for match in pattern.finditer(passage):
@@ -105,7 +105,7 @@ def translate_gaps(args,passage):
 
 
 def check_page(text,i,sources,neighbors,args,*,defer_next=False):
-    from translate import request_blocks
+    from paper_translator.cli import request_blocks
     found=inspect_page(text,i,sources)
     if defer_next:found=[r for r in found if r[2]!=i+1]
     if not found:return text,[]

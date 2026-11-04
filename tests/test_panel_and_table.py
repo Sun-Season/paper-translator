@@ -1,8 +1,8 @@
 import unittest
 import pymupdf
-from native_tables import table_tex
-from original_tables import table_regions
-from vision_flow import remove_panel_transcripts
+from paper_translator.render.native_tables import table_tex
+from paper_translator.source.original_tables import table_regions
+from paper_translator.translation.vision_flow import remove_panel_transcripts
 
 
 class LayoutTest(unittest.TestCase):

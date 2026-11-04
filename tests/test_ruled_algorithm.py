@@ -1,6 +1,6 @@
 import unittest
 from lxml import html
-from ruled_algorithm import match_rows,typeset
+from paper_translator.render.ruled_algorithm import match_rows,typeset
 
 
 class AlgorithmTest(unittest.TestCase):

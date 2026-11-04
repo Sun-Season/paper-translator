@@ -24,7 +24,7 @@ class Job:
         self.root.mkdir(parents=True, exist_ok=True)
         config = {k: str(v) for k, v in vars(args).items() if k != "out"}
         code = hashlib.sha256()
-        for path in sorted(Path(__file__).parent.glob("*.py")):
+        for path in sorted(Path(__file__).resolve().parents[1].rglob("*.py")):
             code.update(path.read_bytes())
         self.identity = {"source": hashlib.sha256(source.read_bytes()).hexdigest(),
                          "config": config, "code": code.hexdigest(), "version": 2}

@@ -1,6 +1,6 @@
 import unittest
 from lxml import html
-from vision_latex import figure_order
+from paper_translator.render.vision_latex import figure_order
 
 
 class FigureOrderTest(unittest.TestCase):

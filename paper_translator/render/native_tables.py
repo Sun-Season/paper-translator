@@ -4,7 +4,7 @@ from collections import Counter
 from bisect import bisect_right
 from statistics import median
 
-from latex_backend import escape
+from paper_translator.render.latex_backend import escape
 
 
 def table_tex(page,box,language=None,column_widths=None):
@@ -68,7 +68,7 @@ def table_tex(page,box,language=None,column_widths=None):
     if column_widths is not None and len(column_widths) != count:
         raise ValueError("指定列宽数量与识别的表格列数不符。")
     if dense:
-        from table_style import numeric_tex
+        from paper_translator.render.table_style import numeric_tex
         return numeric_tex(page,box,cuts,column_widths)
     fractions = column_widths or [(b-a)/box.width for a,b in zip(widths,widths[1:])]
     spec="".join(r"p{\dimexpr "+f"{fraction:.4f}"+r"\linewidth-2\tabcolsep\relax}" for fraction in fractions)
@@ -105,7 +105,7 @@ def table_tex(page,box,language=None,column_widths=None):
             band=next(bands,None)
             cell=r"\textbf{"+tex(v[0])+"}"
             if band:
-                from table_style import rgb
+                from paper_translator.render.table_style import rgb
                 cell=r"\colorbox[rgb]{"+rgb(band[1])+r"}{\makebox[\dimexpr\linewidth-2\fboxsep-4pt\relax][l]{"+cell+"}}"
             lines.append(r"\multicolumn{"+str(count)+r"}{@{}l@{}}{"+cell+r"}\\")
         else:

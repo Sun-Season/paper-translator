@@ -1,5 +1,5 @@
 import unittest
-from translate import boundary_hint
+from paper_translator.cli import boundary_hint
 
 
 class BoundaryHintTest(unittest.TestCase):

@@ -3,7 +3,7 @@ from bisect import bisect_right
 from statistics import median
 import re
 
-from latex_backend import escape
+from paper_translator.render.latex_backend import escape
 
 
 def rgb(color):

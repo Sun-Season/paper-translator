@@ -1,5 +1,5 @@
 import unittest
-from latex_backend import escape
+from paper_translator.render.latex_backend import escape
 
 class LatexBackendTest(unittest.TestCase):
     def test_source_text_cannot_introduce_tex_commands(self):

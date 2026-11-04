@@ -1,6 +1,6 @@
 import unittest
 import pymupdf
-from original_tables import table_regions
+from paper_translator.source.original_tables import table_regions
 
 
 class OriginalTableTest(unittest.TestCase):

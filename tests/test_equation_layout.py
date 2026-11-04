@@ -1,6 +1,6 @@
 import unittest
 import pymupdf as pdf
-from equation_layout import numbered_equations
+from paper_translator.source.equation_layout import numbered_equations
 
 
 class EquationLayoutTest(unittest.TestCase):
@@ -20,7 +20,7 @@ class EquationLayoutTest(unittest.TestCase):
 
 class InlineMathTest(unittest.TestCase):
     def test_summation_ascii_encoding_never_sent_as_math_text(self):
-        from inline_equations import protected_paragraph
+        from paper_translator.legacy.inline_equations import protected_paragraph
         def span(t,font,x,y):
             return {"text":t,"font":font,"bbox":(x,y,x+6,y+8),"origin":(x,y+6)}
         prose=span("The expected return of a policy is computed by summing the rewards over the trajectory. ","Times",0,10)

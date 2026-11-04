@@ -1,6 +1,6 @@
 import unittest
 import pymupdf
-from source_layout import abstract_columns
+from paper_translator.source.source_layout import abstract_columns
 
 
 class AbstractColumnsTest(unittest.TestCase):

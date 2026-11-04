@@ -3,7 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
-from job_runtime import Job
+from paper_translator.harness.job_runtime import Job
 
 
 class JobRecoveryTest(unittest.TestCase):

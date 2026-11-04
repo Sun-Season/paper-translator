@@ -2,7 +2,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 import pymupdf
-from visual_agent import apply_proposals,mapped_pages
+from paper_translator.harness.visual_agent import apply_proposals,mapped_pages
 
 
 class AgentReviewTest(unittest.TestCase):
@@ -29,7 +29,7 @@ class AgentReviewTest(unittest.TestCase):
         import json,hashlib
         from types import SimpleNamespace
         from unittest.mock import patch
-        from visual_agent import visual_export
+        from paper_translator.harness.visual_agent import visual_export
         with TemporaryDirectory() as tmp:
             root=Path(tmp);stage=root/"stage";stage.mkdir();source=root/"source.pdf"
             with pymupdf.open() as d:
@@ -51,7 +51,7 @@ class AgentReviewTest(unittest.TestCase):
                                    observation="漏译否定",proposal="恢复否定",criterion="语义一致",before="机器人移动了。",
                                    after="机器人没有移动。",severity="major")];checks=[]
                 return [dict(source_page=1,output_pages=[1],findings=findings,recheck=checks)]
-            with patch("vision_harness.verified_export",side_effect=render),patch("visual_agent.review_round",side_effect=review):
+            with patch("paper_translator.harness.vision_harness.verified_export",side_effect=render),patch("paper_translator.harness.visual_agent.review_round",side_effect=review):
                 visual_export(stage,source,SimpleNamespace(model="test"))
             log=json.loads((stage/"视觉审阅记录.json").read_text())
             self.assertEqual((calls,log["selected_round"],log["status"]),(["0","1"],2,"passed"))

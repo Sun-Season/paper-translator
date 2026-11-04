@@ -3,9 +3,9 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import pymupdf
-from layout_policy import load_layout, validate_object, configure_preamble
-from latex_backend import PAPER_PREAMBLE
-from visual_agent import apply_proposals
+from paper_translator.config.layout_policy import load_layout, validate_object, configure_preamble
+from paper_translator.render.latex_backend import PAPER_PREAMBLE
+from paper_translator.harness.visual_agent import apply_proposals
 
 
 class LayoutPolicyTest(unittest.TestCase):

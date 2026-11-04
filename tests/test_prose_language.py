@@ -3,7 +3,7 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
-from prose_language import suspect, ownership, normalized, check_page
+from paper_translator.translation.prose_language import suspect, ownership, normalized, check_page
 
 
 class ProseCheckTest(TestCase):
@@ -36,6 +36,6 @@ class ProseCheckTest(TestCase):
         line="The model was pretrained on three distinct stages of real robot data."
         texts=[" "+normalized(line)+" "," chapter five reports the experiments "]
         args=SimpleNamespace(model="test",base_url="test")
-        with TemporaryDirectory() as tmp,patch.dict("os.environ",{"PAPER_JOB_DIR":tmp}),patch("translate.request_blocks",return_value=[{"id":0,"action":"duplicate","evidence":"凭空编造的中文引文。"}]):
+        with TemporaryDirectory() as tmp,patch.dict("os.environ",{"PAPER_JOB_DIR":tmp}),patch("paper_translator.cli.request_blocks",return_value=[{"id":0,"action":"duplicate","evidence":"凭空编造的中文引文。"}]):
             with self.assertRaises(ValueError):check_page(line,1,texts,{0:"完整译稿。",1:line},args)
             self.assertEqual(list((Path(tmp)/"prose-verdicts").iterdir()),[])

@@ -1,16 +1,8 @@
 """将视觉模型返回的 Markdown、表格和可编辑公式排成中文 PDF。"""
-import base64
 import json
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 import re
-import shutil
-import subprocess
-import tempfile
 
-from lxml import etree
-from lxml import html as dom
-import pypandoc
 import pymupdf
 
 
@@ -33,14 +25,13 @@ def source_links(markdown, source):
     return "".join(pages)
 
 
-from vision_latex import render_vision_latex as render_vision_pdf
 
 
 def review_vision_pages(source, directory, args):
     """用原页核对图块所属页，并移除已经在上页译完的短续句。"""
     from contextlib import closing
     import pypdfium2 as pdfium
-    from translate import markdown_blocks, read_page, request_blocks
+    from paper_translator.cli import markdown_blocks, read_page, request_blocks
     path = directory/"paper.md"
     pages = re.split(r"(?m)^<!-- 原稿第 \d+ 页 -->\s*",path.read_text())[1:]
     reviews = {}

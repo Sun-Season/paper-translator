@@ -13,8 +13,8 @@ import numpy as np
 import pymupdf as pdf
 from PIL import Image
 
-from original_tables import table_regions
-from ruled_algorithm import source_specs
+from paper_translator.source.original_tables import table_regions
+from paper_translator.render.ruled_algorithm import source_specs
 
 LABEL=re.compile(r"^(Fig(?:ure)?\.?|Table|图|表)\s*(S?\d+(?:\.\d+)*)(?=\s*[:：、]|[.．]\s+\S|\s*$|\s+(?-i:[A-Z]))",re.I)
 
@@ -284,8 +284,8 @@ def repair_split_math(draft):
 
 
 def verified_export(directory,source,args):
-    from vision_latex import render_vision_latex
-    from prose_language import check_draft, inspect_page, normalized, source_pages
+    from paper_translator.render.vision_latex import render_vision_latex
+    from paper_translator.translation.prose_language import check_draft, inspect_page, normalized, source_pages
     path=directory/"paper.md"
     logpath=directory/"正文语言检查.json"
     log=json.loads(logpath.read_text()) if logpath.is_file() else []
@@ -293,7 +293,7 @@ def verified_export(directory,source,args):
     logpath.write_text(json.dumps(log,ensure_ascii=False,indent=2))
     refs=source_pages(source)
     draft, math_records = repair_split_math(path.read_text())
-    from figure_groups import restore_groups
+    from paper_translator.source.figure_groups import restore_groups
     draft = restore_groups(draft, source, directory)
     original_draft=draft
     with pdf.open(source) as original,tempfile.TemporaryDirectory(dir=directory.parent) as temp:

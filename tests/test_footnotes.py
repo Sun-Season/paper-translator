@@ -1,6 +1,6 @@
 import unittest
 import pymupdf as pdf
-from reflow_pdf import Item,bind_footnotes
+from paper_translator.legacy.reflow_pdf import Item,bind_footnotes
 
 class FootnoteTest(unittest.TestCase):
     def test_note_is_bound_to_sentence_not_formula_exponent(self):

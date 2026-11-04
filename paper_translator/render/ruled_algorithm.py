@@ -1,7 +1,7 @@
 """根据原算法的横线、行号和正文起点重建伪代码块。"""
 from copy import deepcopy
 import re
-from reflow_pdf import source_algorithms
+from paper_translator.legacy.reflow_pdf import source_algorithms
 
 TITLE=re.compile(r"^(?:Algorithm|算法)\s*(\d+)\b",re.I)
 STEP=re.compile(r"^\s*(\d+)\s*[:：]\s*")

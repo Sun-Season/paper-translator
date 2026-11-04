@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pymupdf as pdf
 
-from paper_harness import translation_checkpoint
-from reflow_pdf import restore_paragraphs, inline
+from paper_translator.harness.paper_harness import translation_checkpoint
+from paper_translator.legacy.reflow_pdf import restore_paragraphs, inline
 
 
 class ParagraphFlowTest(unittest.TestCase):

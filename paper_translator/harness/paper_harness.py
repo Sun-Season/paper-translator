@@ -13,7 +13,7 @@ def normalized(text):
 
 
 def run_layout(source, checkpoint, destination, columns, inline_settings=None, backend="mupdf"):
-    from reflow_pdf import repaginate
+    from paper_translator.legacy.reflow_pdf import repaginate
 
     output = destination / "paper.pdf"
     log = {"layout_engine":backend,"input": source.name, "stages": ["translation_available", "reflow"]}
@@ -22,7 +22,7 @@ def run_layout(source, checkpoint, destination, columns, inline_settings=None, b
     try:
         repaginate(source, checkpoint, output, columns=columns, audit=paragraphs, formula_audit=formulas, inline_settings=inline_settings,backend=backend)
         log["stages"].append("verify")
-        from equation_layout import verify_equations
+        from paper_translator.source.equation_layout import verify_equations
         verify_equations(source,output,[a for a in formulas if a[0]!="inline"])
         with pdf.open(output) as doc:
             # 先核对导出的阅读流，避免只验证准备写入的 HTML。

@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 import pymupdf
-from vision_flow import clean_boundaries
+from paper_translator.translation.vision_flow import clean_boundaries
 
 
 class VisionFlowTest(unittest.TestCase):

@@ -10,8 +10,8 @@ from pathlib import Path
 import pymupdf as pdf
 from PIL import Image
 
-from equation_layout import numbered_equations, outside_equations
-from reading_pdf import CAPTION, NUMBER, REFERENCE, lines, source_figures
+from paper_translator.source.equation_layout import numbered_equations, outside_equations
+from paper_translator.legacy.reading_pdf import CAPTION, NUMBER, REFERENCE, lines, source_figures
 
 
 @dataclass
@@ -277,7 +277,7 @@ def preserve_ruled_tables(items, page):
 
 
 def repair_prose(items, source, settings):
-    from inline_equations import TOKEN, translated_template
+    from paper_translator.legacy.inline_equations import TOKEN, translated_template
     pages = {}
     def source_block(it):
         if it.page not in pages:
@@ -609,7 +609,7 @@ def repaginate(original, translated, output, *, columns=1, audit=None, formula_a
             group = preserve_ruled_tables(group,source[page.number])
             group = restore_source_roles(group,source[page.number])
             if inline_settings:
-                from inline_equations import protect_inline_items
+                from paper_translator.legacy.inline_equations import protect_inline_items
                 inline_boxes.update(protect_inline_items(source[page.number],group,inline_settings,Item,inline_assets))
             items.extend(group)
         original_header(source[0],items)
@@ -674,7 +674,7 @@ def repaginate(original, translated, output, *, columns=1, audit=None, formula_a
             else:
                 previous = item
         if backend=="latex":
-            from latex_backend import render_latex
+            from paper_translator.render.latex_backend import render_latex
             render_latex(source,raw,inline_assets,items,inline_boxes,entries,output,front_matter(items))
             return
         blank = io.BytesIO()
@@ -921,7 +921,7 @@ def repaginate(original, translated, output, *, columns=1, audit=None, formula_a
                         doc.xref_set_key(xref, "A", f"<< /S /GoTo /D {fit_destination(views[key])} >>")
             doc.set_metadata(raw.metadata)
             if inline_settings and formula_audit is not None:
-                from equation_layout import verify_equations
+                from paper_translator.source.equation_layout import verify_equations
                 inline_expected=[a for a in formula_audit if a[0]=="inline"]
                 verify_equations(inline_assets,doc,inline_expected)
             doc.subset_fonts()

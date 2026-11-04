@@ -1,6 +1,6 @@
 import unittest
 import pymupdf as pdf
-from source_layout import source_layout, spans_gutter
+from paper_translator.source.source_layout import source_layout, spans_gutter
 
 
 class SourceLayoutTest(unittest.TestCase):

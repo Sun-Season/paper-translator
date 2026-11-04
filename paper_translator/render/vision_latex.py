@@ -10,14 +10,14 @@ from lxml import html
 import pypandoc
 import pymupdf
 from PIL import Image
-from latex_backend import PAPER_PREAMBLE, compile_paper, escape, tex_engine
-from vision_flow import clean_boundaries
-from ruled_algorithm import source_specs, match_rows, typeset
-from source_header import header_region, draft_header_end, locate_header
-from source_layout import source_layout, spans_gutter, abstract_columns
-from equation_layout import numbered_equations
-from original_tables import original_table_assets
-from native_tables import table_tex
+from paper_translator.render.latex_backend import PAPER_PREAMBLE, compile_paper, escape, tex_engine
+from paper_translator.translation.vision_flow import clean_boundaries
+from paper_translator.render.ruled_algorithm import source_specs, match_rows, typeset
+from paper_translator.source.source_header import header_region, draft_header_end, locate_header
+from paper_translator.source.source_layout import source_layout, spans_gutter, abstract_columns
+from paper_translator.source.equation_layout import numbered_equations
+from paper_translator.source.original_tables import original_table_assets
+from paper_translator.render.native_tables import table_tex
 
 CAP = re.compile(r"^(图|表|Figure|Table)\s*(S?\d+)\s*",re.I)
 SAFE_MATH=set(r"""alpha beta gamma delta epsilon varepsilon zeta eta theta vartheta iota kappa lambda mu nu xi pi varpi rho varrho sigma varsigma tau upsilon phi varphi chi psi omega Gamma Delta Theta Lambda Xi Pi Sigma Upsilon Phi Psi Omega left right big Big bigg Bigg bigl bigr frac dfrac tfrac sqrt sum prod int iint oint lim limits nolimits in notin cup cap union subset subseteq supset supseteq parallel mid vert Vert lVert rVert lvert rvert langle rangle lbrace rbrace ldots cdots dots vdots ddots pm mp times div cdot circ ast to mapsto rightarrow leftarrow Rightarrow Leftrightarrow le leq ge geq ne neq approx equiv sim simeq propto forall exists infty nabla partial emptyset ell mathcal mathbb mathrm mathbf mathit mathsf mathtt text operatorname log ln exp sin cos tan min max arg det hat widehat bar overline underline tilde widetilde vec dot ddot bigcup bigcap bigoplus oplus otimes quad qquad hspace tag displaystyle textstyle scriptstyle scriptscriptstyle underbrace overbrace binom substack begin end boldsymbol perp lfloor rfloor odot uparrow downarrow""".split())
@@ -75,9 +75,9 @@ def figure_order(nodes,captions):
 
 
 def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,crop_boxes=None):
-    from vision_pdf import source_links
+    from paper_translator.translation.vision_pdf import source_links
     directory=Path(directory)
-    from layout_policy import load_layout, configure_preamble
+    from paper_translator.config.layout_policy import load_layout, configure_preamble
     layout = load_layout(directory)
     object_layout = layout["objects"]
     manifest = {}
@@ -85,7 +85,7 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
     md=(directory/"paper.md").read_text()
     md=re.sub(r"\\cite(?:p|t)?\{([\d,\s]+)\}", lambda m:"["+re.sub(r"\s+","",m[1])+"]", md)
     if source:
-        from figure_groups import restore_groups
+        from paper_translator.source.figure_groups import restore_groups
         md = restore_groups(md, source, directory)
     source_tables={}
     if source:
@@ -201,7 +201,7 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
     with tempfile.TemporaryDirectory(prefix="vision-tex-") as tmp:
         work=Path(tmp)
         if source_tables:
-            from table_language import TableLanguage
+            from paper_translator.translation.table_language import TableLanguage
             language=TableLanguage(directory,args)
             with pymupdf.open(source) as original:
                 for filename,(page,box,_) in source_tables.items():

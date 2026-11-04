@@ -2,7 +2,7 @@ import unittest
 
 import pymupdf as pdf
 
-from reflow_pdf import page_items
+from paper_translator.legacy.reflow_pdf import page_items
 
 
 class CaptionBoundaryTest(unittest.TestCase):

@@ -10,7 +10,7 @@ import tempfile
 
 import pymupdf as pdf
 
-from reading_pdf import CAPTION, REFERENCE
+from paper_translator.legacy.reading_pdf import CAPTION, REFERENCE
 
 
 def tex_engine():
@@ -40,7 +40,7 @@ def escape(text):
 
 
 def render_latex(source, raw, inline_assets, items, inline_boxes, entries, output, front):
-    from reflow_pdf import CITATIONS
+    from paper_translator.legacy.reflow_pdf import CITATIONS
     binary = tex_engine()
     anchors = {it.anchor for it in items if it.anchor}
     with tempfile.TemporaryDirectory(prefix="paper-tex-") as temp:

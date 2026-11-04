@@ -29,7 +29,7 @@ class TableLanguage:
                      " " in t and re.search(r"[a-z]{3}",t)}
         pending=sorted(descriptive-self.values.keys())
         if pending and self.args and self.args.model:
-            from translate import request_blocks
+            from paper_translator.cli import request_blocks
             for start in range(0,len(pending),25):
                 batch=pending[start:start+25]
                 payload={"model":self.args.model,"messages":[{"role":"system","content":

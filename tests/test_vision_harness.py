@@ -3,12 +3,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 import pymupdf
-from vision_harness import repair,source_inventory,verified_export
+from paper_translator.harness.vision_harness import repair,source_inventory,verified_export
 
 
 class HarnessTest(unittest.TestCase):
     def test_header_requires_a_source_boundary_and_matching_render(self):
-        from source_header import header_region, draft_header_end, locate_header
+        from paper_translator.source.source_header import header_region, draft_header_end, locate_header
         from lxml import html
         nodes = [html.fromstring(tag) for tag in ("<h1>译名</h1>", "<p>署名</p>", "<h2>摘要</h2>")]
         self.assertEqual(draft_header_end(nodes, [0]*3), 2)
@@ -25,14 +25,14 @@ class HarnessTest(unittest.TestCase):
             self.assertLess(locate_header(doc[0], blank, box, box.width)[0], .92)
 
     def test_split_math_requires_unique_equivalent(self):
-        from vision_harness import repair_split_math
+        from paper_translator.harness.vision_harness import repair_split_math
         broken = "$\nho = 0.85$"
         good = r"$\rho = 0.85$"
         self.assertEqual(repair_split_math(broken + "；" + good)[0], good + "；" + good)
         self.assertEqual(repair_split_math(broken)[0], broken)
 
     def test_dimension_is_not_an_equation_reference(self):
-        from vision_latex import REFERENCE
+        from paper_translator.render.vision_latex import REFERENCE
         self.assertEqual(REFERENCE.findall("框架式 2D、自回归式 16x；见式 2、公式（12）和图 3。"),
                          ["式 2", "公式（12）", "图 3"])
 
@@ -67,7 +67,7 @@ class HarnessTest(unittest.TestCase):
             def render(run,*args,**kwargs):
                 (run/"paper.pdf").write_bytes(run.name.encode())
             issue={"code":"prose_crop","object":"figures/bad.png","source_page":1,"detail":"正文"}
-            with patch("vision_latex.render_vision_latex",side_effect=render),patch("vision_harness.audit",return_value=[issue]):
+            with patch("paper_translator.render.vision_latex.render_vision_latex",side_effect=render),patch("paper_translator.harness.vision_harness.audit",return_value=[issue]):
                 verified_export(stage,root/"original.pdf",None)
             report=json.loads((stage/"质量验收.json").read_text())
             self.assertEqual(report["status"],"needs_review")
@@ -88,7 +88,7 @@ class HarnessTest(unittest.TestCase):
         self.assertEqual(repair(draft,[item],objects),(draft,[]))
 
     def test_formula_cannot_discard_a_figure(self):
-        from vision_flow import clean_boundaries
+        from paper_translator.translation.vision_flow import clean_boundaries
         with TemporaryDirectory() as tmp:
             file=Path(tmp)/"source.pdf"
             with pymupdf.open() as d:
