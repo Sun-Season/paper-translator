@@ -105,6 +105,9 @@ class Job:
                 statuses.append(json.loads(path.read_text()).get("status"))
         self.state["status"] = "needs_review" if "needs_review" in statuses else "completed"
         self.save()
+        # 发布成功后工作目录（检查点、缓存、中间候选）不再需要；失败时保留以便恢复。
+        if not os.environ.get("PAPER_KEEP_JOB"):
+            shutil.rmtree(self.root, ignore_errors=True)
 
     def __exit__(self, kind, error, traceback):
         if error:

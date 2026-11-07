@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -31,7 +30,20 @@ class JobRecoveryTest(unittest.TestCase):
                 job.run("review", review)
                 job.publish()
             self.assertEqual((destination / "paper.md").read_text(), "verified draft")
-            self.assertEqual(json.loads((root / "output.job/task.json").read_text())["status"], "completed")
+            self.assertFalse((root / "output.job").exists())
+
+    def test_keep_job_environment_preserves_workspace(self):
+        import os
+        from unittest.mock import patch
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source.pdf"
+            source.write_bytes(b"source")
+            with patch.dict(os.environ, {"PAPER_KEEP_JOB": "1"}):
+                with Job(source, root / "out", SimpleNamespace(model="a")) as job:
+                    (job.stage / "paper.md").write_text("draft")
+                    job.publish()
+            self.assertTrue((root / "out.job").exists())
 
     def test_reject_changed_configuration(self):
         with TemporaryDirectory() as tmp:
