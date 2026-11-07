@@ -48,7 +48,7 @@ paper_translator/
   config/            共用规则和排版参数
   translation/       译稿检查、语言判别和边界处理
   source/            原稿栏式、题头、图表和公式识别
-  render/            LaTeX、表格和算法排版
+  render/            LaTeX、矢量表格和算法排版
   harness/           任务恢复、程序验收和视觉循环
   legacy/            仍被其他后端或共享解析调用的旧版实现
 tests/               回归测试

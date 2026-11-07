@@ -22,7 +22,8 @@ def contents_plan(nodes):
     if end is None or len(entries)<3:return None
     wanted={key for key,_ in entries};headings={}
     for i in range(end,len(nodes)):
-        text=" ".join(nodes[i].text_content().split());match=_HEADING.match(text)
+        text=" ".join(nodes[i].text_content().split())
+        match=_HEADING.match(text)
         if match and match[1] in wanted and len(text)<160 and not re.search(r'(?:\.\s*){4}',text):
             if match[1] not in {v['id'] for v in headings.values()}:
                 headings[i]={'id':match[1],'title':text,'label':'native-sec-'+match[1].replace('.','-')}

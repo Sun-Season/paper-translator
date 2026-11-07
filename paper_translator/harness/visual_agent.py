@@ -19,8 +19,8 @@ POLICY="""你是论文翻译成品的质量验收员，不评价原论文写作�
 依据图片检查版式与阅读顺序，依据原文核实语义、否定、数字、图表关系和公式。页码和换行可以改变。译文延续到相邻页、图片内保留英文都是允许的；图内文字和表内文字保留原文属于正确行为，不要报告；参考文献条目必须保留原文，把作者、题名或会议名译成中文属于错误。不要仅因译文未出现在这一张图上就断言内容缺失。
 自行判断值得修改的问题及下一步。优先保证内容正确和可读；无需凑数，无问题就返回空列表。不要引入原文没有的事实。只报告有明确证据、影响理解或阅读的问题，不要求每页有问题。正确的同义翻译、正常中文语序、字体斜体偏好不是缺陷。不得把 Markdown 的 $ 或反斜杠当作实际 PDF 中的乱码。公式必须对照带身份标签的图片核实，不能依据 source_text 中的数学提取结果判断上下标、花体或结构错误，因为文本提取会丢失这些信息。不得把【原稿】英文图当作【成品】。
 必须返回一个 JSON 对象，blocks 内恰有一个对象，格式如下：
-{"blocks":[{"findings":[{"severity":"major 或 minor","observation":"原稿和成品的具体差异","source_quote":"从所给原文复制的简短连续片段","output_page":1,"criterion":"下一次如何从成品判断已修复","action":"replace 或 insert_after 或 recrop 或 layout 或 review","object_id":"layout 时填写给定对象标识","layout":{"span":"source 或 single 或 wide","column_widths":[0.3,0.7]},"before":"本页 Markdown 中唯一的原样文字片段，裁图用 figures/...png 相对路径","after":"仅给替换片段或补入的译文","box":[0,0,1000,1000],"proposal":"推荐的具体修改"}],"recheck":[{"id":"上轮问题ID","status":"resolved 或 remains 或 uncertain","evidence":"本轮实际图像/文字上的证据"}]}]}
-首页题名、署名、机构和项目网址必须按原稿原样显示，检查实际成品，勿建议翻译题头。replace 可修正文、标题层级、段落、公式及列表的 Markdown；insert_after 仅补确有原文依据的遗漏；recrop 仅修可清楚界定的图块，坐标基于首张原稿页；layout 可按给定对象标识调整单栏或跨栏，表格列宽用总和为 1 的比例列表表示。只提交需要改变的字段，其余修改用 review 自由说明。不要输出代码、命令、文件路径或新链接。待复查的问题必须逐项给出结果；原先的判断若不成立也标为 resolved 并明确撤回依据。before 必须逐字复制 draft 中的唯一连续文本，不能使用省略号、概述或自行翻译后的文本。若 execution 显示修改未执行，请根据原因提出不同且可执行的新方案，不要重复失败方案。只有原图和成品都能证实的问题才可标 major；不确定时返回 review 并解释缺少的证据。"""
+{"blocks":[{"findings":[{"severity":"major 或 minor","observation":"原稿和成品的具体差异","source_quote":"从所给原文复制的简短连续片段","output_page":1,"criterion":"下一次如何从成品判断已修复","action":"replace 或 insert_after 或 recrop 或 layout 或 review","object_id":"layout 时填写给定对象标识","layout":{"span":"source 或 single 或 wide"},"before":"本页 Markdown 中唯一的原样文字片段，裁图用 figures/...png 相对路径","after":"仅给替换片段或补入的译文","box":[0,0,1000,1000],"proposal":"推荐的具体修改"}],"recheck":[{"id":"上轮问题ID","status":"resolved 或 remains 或 uncertain","evidence":"本轮实际图像/文字上的证据"}]}]}
+首页题名、署名、机构和项目网址必须按原稿原样显示，检查实际成品，勿建议翻译题头。replace 可修正文、标题层级、段落、公式及列表的 Markdown；insert_after 仅补确有原文依据的遗漏；recrop 仅修可清楚界定的图块，坐标基于首张原稿页；layout 可按给定对象标识调整单栏或跨栏；表格按原稿矢量还原，不要对表格提列宽。只提交需要改变的字段，其余修改用 review 自由说明。不要输出代码、命令、文件路径或新链接。待复查的问题必须逐项给出结果；原先的判断若不成立也标为 resolved 并明确撤回依据。before 必须逐字复制 draft 中的唯一连续文本，不能使用省略号、概述或自行翻译后的文本。若 execution 显示修改未执行，请根据原因提出不同且可执行的新方案，不要重复失败方案。只有原图和成品都能证实的问题才可标 major；不确定时返回 review 并解释缺少的证据。"""
 
 POLICY += "\n本组只负责 source_page 所属内容。成品页会同时包含其他原页的内容，这不表示新增、错页或错图。source_neighbors 和附加原稿图供核对这些内容的来源；source_ownership 明确给出各图表原页及成品目标。不要把图11、图12、图13仅因相邻出现就合并或改号。目录引用的后文章节不属于目录页待改正文。修改必须定位到本组 draft；其他原页内容由对应组审阅。"
 POLICY += "\n" + TABLE_ALGORITHM_POLICY + "\n" + DOCUMENT_POLICY
@@ -85,6 +85,8 @@ def review_round(source,run,args,prior):
         from paper_translator.harness.review_contract import render_evidence, source_ownership
         rendered=render_evidence(run,dest)
         ownership=source_ownership(inventory,dest)
+        from paper_translator.harness.review_contract import image_placement_map
+        placements=image_placement_map(run,dest)
         from paper_translator.harness.contents_audit import audit_contents
         verified_toc=audit_contents(dest,rendered.get('contents',{}).get('entries',[]))
         (run/'目录目标验收.json').write_text(json.dumps(verified_toc,ensure_ascii=False,indent=2))
@@ -106,8 +108,7 @@ def review_round(source,run,args,prior):
                 context['image_labels']=[f'【本组原稿】第 {i+1} 页']+[f'【相邻内容原稿，仅供归属核对】第 {j+1} 页' for j in neighbors]+[f'【成品】中文导出第 {j+1} 页' for j in pages]
                 images=[view(src[i],scale=2.4) if pending else src_images[i],*(src_images[j] for j in neighbors),*(view(dest[j],scale=2.4) if pending else out_images[j] for j in pages)]
                 if pending:
-                    from paper_translator.harness.review_contract import image_placements
-                    locations=image_placements(run,dest,i+1)
+                    locations=placements.get(i+1,[])
                     context['actual_image_placements']=locations
                     for j in pages:
                         boxes=[pdf.Rect(x['box']) for x in locations if x['output_page']==j+1]
@@ -389,6 +390,14 @@ def gate_findings(open_findings):
     return blockers,advisories
 
 
+def _copy_asset(src,dst):
+    """图块只读且由原稿决定，复制轮次时用硬链接，避免反复写大文件。"""
+    if str(src).endswith(".png"):
+        try:os.link(src,dst);return dst
+        except OSError:pass
+    return shutil.copy2(src,dst)
+
+
 def visual_export(directory,source,args):
     from paper_translator.harness.vision_harness import verified_export
     with tempfile.TemporaryDirectory(dir=directory.parent) as tmp:
@@ -410,7 +419,7 @@ def visual_export(directory,source,args):
             restored=bool(archive and (archive/"candidate-ready.json").exists())
             if restored:
                 # 同一任务身份下恢复同一份候选，不再次翻译标题、应用修改或编译。
-                shutil.copytree(archive,run)
+                shutil.copytree(archive,run,copy_function=_copy_asset)
                 edits=json.loads((run/"candidate-ready.json").read_text()).get("edits",[])
                 if best is not None:
                     logs[-1]["decisions"]=edits
@@ -418,7 +427,7 @@ def visual_export(directory,source,args):
                         decision=next((e for e in edits if e["id"]==finding["id"]),None)
                         if decision:finding["execution"]=decision
             else:
-                shutil.copytree(best or directory,run)
+                shutil.copytree(best or directory,run,copy_function=_copy_asset)
                 for stale in ("candidate-ready.json", "review.json"):
                     (run/stale).unlink(missing_ok=True)
                 edits=[]

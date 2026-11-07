@@ -297,7 +297,7 @@ def repair_split_math(draft):
     return re.sub(pattern, restore, draft), records
 
 
-def strip_unresolved_images(draft,directory):
+def strip_unresolved_images(draft):
     """删除模型自造的图片链接，只保留确实存在于 figures/ 的裁片。"""
     def replace(match):
         target=match.group(1).strip()
@@ -322,7 +322,7 @@ def verified_export(directory,source,args):
     from paper_translator.source.figure_groups import restore_placeholder_figures, restore_groups, normalize_figure_html
     draft = normalize_figure_html(draft)
     draft, restored_figures = restore_placeholder_figures(draft, source, directory)
-    draft = strip_unresolved_images(draft, directory)
+    draft = strip_unresolved_images(draft)
     from paper_translator.source.figure_groups import strip_figure_text, ensure_missing_figures
     draft, removed_figure_text = strip_figure_text(draft, source)
     from paper_translator.render.ruled_algorithm import normalize_algorithm_blocks
@@ -354,8 +354,6 @@ def verified_export(directory,source,args):
                 shutil.copytree(directory/"figures",run/"figures",copy_function=os.link)
             config = directory/"layout.json"
             if config.exists(): shutil.copyfile(config, run/"layout.json")
-            saved=(best or directory)/"table-translations.json"
-            if saved.exists():shutil.copyfile(saved,run/saved.name)
             try:
                 render_vision_latex(run,source,args,prepared_draft=count>0,
                                     crop_boxes={c["path"]:pdf.Rect(c["box"]) for c in crops if "box" in c})

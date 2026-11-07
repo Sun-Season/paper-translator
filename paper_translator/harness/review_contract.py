@@ -1,6 +1,7 @@
 """向审阅提供实际渲染证据，并恢复不完整的模型回复。"""
 import copy
 import json
+import re
 
 ACTIONS = {'replace', 'insert_after', 'recrop', 'layout', 'review'}
 
@@ -98,16 +99,28 @@ def labeled_images(context, images):
     return result
 
 
-def image_placements(run, document, source_page):
-    """按解码像素摘要定位实际嵌入的图块，不用文字相似度猜位置。"""
+def image_placement_map(run, document):
+    """一次扫描得到 原页 -> 实际嵌入位置，供整轮审阅复用。"""
     import pymupdf
     assets = {}
-    for path in (run/'figures').glob(f'page-{source_page:04d}-*.png'):
-        pix = pymupdf.Pixmap(str(path))
-        assets.setdefault(pix.digest, []).append('figures/'+path.name)
-    result=[]
+    for path in (run/'figures').glob('page-*.png'):
+        match = re.match(r'page-(\d+)-', path.name)
+        if match is None:
+            continue
+        entry = assets.setdefault(pymupdf.Pixmap(str(path)).digest,
+                                  {'source_page': int(match[1]), 'names': []})
+        entry['names'].append('figures/'+path.name)
+    result = {}
     for page in document:
         for item in page.get_image_info(hashes=True):
-            if item['digest'] in assets:
-                result.append({'assets':assets[item['digest']], 'output_page':page.number+1,'box':list(item['bbox'])})
+            entry = assets.get(item['digest'])
+            if entry is None:
+                continue
+            result.setdefault(entry['source_page'], []).append(
+                {'assets': entry['names'], 'output_page': page.number+1, 'box': list(item['bbox'])})
     return result
+
+
+def image_placements(run, document, source_page):
+    """按解码像素摘要定位实际嵌入的图块，不用文字相似度猜位置。"""
+    return image_placement_map(run, document).get(source_page, [])

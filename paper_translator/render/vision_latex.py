@@ -17,7 +17,6 @@ from paper_translator.source.source_header import header_region, draft_header_en
 from paper_translator.source.source_layout import source_layout, spans_gutter, abstract_columns
 from paper_translator.source.equation_layout import numbered_equations
 from paper_translator.source.original_tables import original_table_assets
-from paper_translator.render.native_tables import table_tex
 
 CAP = re.compile(r"^(图|表|Figure|Table)\s*(S?\d+)\s*",re.I)
 from paper_translator.config.math_commands import MATH_COMMANDS as SAFE_MATH

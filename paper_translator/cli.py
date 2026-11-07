@@ -281,7 +281,7 @@ def translate_markdown(source, destination, args):
                 context+="\nCurrent page begins inside this sentence: "+hint
             if i+1<len(excerpts) and (hint:=boundary_hint(excerpts[i][1],excerpts[i+1][0])):
                 context+="\nCurrent page ends inside this sentence: "+hint
-            futures.append(pool.submit(translate_vision_page,source,destination,args,i,context,cache))
+            futures.append(pool.submit(translate_vision_page,source,args,i,context,cache))
         results=[future.result() for future in futures]
     from paper_translator.translation.prose_language import check_page,source_pages
     refs=source_pages(source)
@@ -317,7 +317,7 @@ def translate_markdown(source, destination, args):
 
 
 
-def translate_vision_page(source,destination,args,index,context,cache):
+def translate_vision_page(source,args,index,context,cache):
     number=index+1
     saved=cache/f"{number}.json"
     pending=Path(os.environ["PAPER_PENDING_DIR"])/cache.name/f"{number}.json" if os.getenv("PAPER_PENDING_DIR") else None
@@ -445,7 +445,7 @@ def main():
                 if args.vision_draft:
                     draft = args.vision_draft.resolve()
                     shutil.copyfile(draft, stage / "paper.md")
-                    for name in ("table-translations.json", "figures", "layout.json", "视觉审阅记录.json"):
+                    for name in ("figures", "layout.json", "视觉审阅记录.json"):
                         item = draft.parent / name
                         if item.is_dir():
                             shutil.copytree(item, stage / name, dirs_exist_ok=True)

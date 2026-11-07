@@ -64,13 +64,3 @@ class StructuralRepairTest(unittest.TestCase):
     def test_empty_set_variant_is_supported(self):
         from paper_translator.render.vision_latex import math_tex
         self.assertEqual(math_tex(r'H_t^{(\varnothing)}'),r'H_t^{(\varnothing)}')
-
-    def test_numeric_table_preserves_leading_word_space(self):
-        import pymupdf
-        from paper_translator.render.table_style import numeric_tex
-        with pymupdf.open() as doc:
-            page=doc.new_page()
-            page.insert_text((40,60),'Retained')
-            page.insert_text((90,60),' pass@8',fontname='tiro')
-            tex=numeric_tex(page,pymupdf.Rect(35,40,180,80),[])
-            self.assertIn(r'\hspace*{0.25em}pass@8',tex)
