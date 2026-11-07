@@ -27,7 +27,7 @@ REFERENCE = re.compile(r"\[[\d,， –—-]+\]|(?:图|表|公式|式|Fig(?:ure)?
 
 def math_tex(value):
     value=value.strip()
-    if re.search(r"(?<!\\)[%#$]|\x00|\^\^|\\(?:begin|end)\s*\{(?!aligned\}|gathered\}|matrix\}|pmatrix\}|bmatrix\}|cases\})",value):
+    if re.search(r"(?<!\\)[%#$]|\x00|\^\^|\\(?:begin|end)\s*\{(?!aligned\}|alignedat\}|gathered\}|matrix\}|pmatrix\}|bmatrix\}|vmatrix\}|Vmatrix\}|cases\}|array\}|smallmatrix\}|split\})",value):
         raise ValueError("公式含不支持的 TeX 语法。")
     if set(re.findall(r"\\([A-Za-z]+)",value))-SAFE_MATH:
         raise ValueError("公式含尚未支持的 LaTeX 命令。")
@@ -221,7 +221,9 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                 if tag=="code":v=v.replace(r"\_",r"\_\allowbreak{}")
                 t+=v
             t+=encode(child.tail or "")
-        return t
+        # 行内公式和 DOI 本身不可断行；给出断点，避免整行越界。
+        t=t.replace(r"\(", r"\allowbreak\(")
+        return re.sub(r"(10\.\d{4,9}/)",r"\1\\allowbreak{}",t)
     abstract_count=1
     widths=[];columns=[];eq_boxes={};alg_specs={};preamble=configure_preamble(PAPER_PREAMBLE, layout["document"])
     if source:
@@ -270,7 +272,6 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
             with pymupdf.open(source) as original:
                 for obj in source_inventory(original):
                     anchors.add({"figure":"fig-","table":"tab-","algorithm":"alg-"}.get(obj["type"],"")+str(obj["number"]))
-            anchors.update("eq-"+str(num) for _page,num in eq_boxes)
             anchors.update("grid-"+Path(name).stem.replace("source-table-","grid-") for name in source_tables)
         body=[]
         header_end = draft_header_end(nodes, origins) if source else None
@@ -567,7 +568,7 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                 body.append(equation)
             elif t:
                 bib=re.match(r"^\[(\d+)\]\s",t)
-                if bib:body.append(r"\par\noindent\hangindent=1.7em "+dest("bib-"+bib[1])+inline(n,False)+r"\par")
+                if bib:body.append(r"\par\noindent\raggedright\hangindent=1.7em "+dest("bib-"+bib[1])+inline(n,False)+r"\par")
                 elif started and n.tag=="p" and re.search(r"[一-鿿]",t) and not t.startswith(("†","‡")):
                     body.append(r"{\leftskip=0pt\rightskip=0pt\parfillskip=0pt plus 1fil\noindent\hspace*{\bodyindent}"+inline(n)+r"\par}")
                 else:body.append(r"\par\noindent "+inline(n)+r"\par")

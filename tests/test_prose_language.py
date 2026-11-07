@@ -24,6 +24,11 @@ class ProseCheckTest(TestCase):
                      "| Name | Description of the data used for training the model |"):
             self.assertFalse(suspect(line),line)
 
+    def test_split_numbered_reference_still_kept(self):
+        entry=("[78] Gemma Team, Aishwarya Kamath, Johan Ferret, Shreya Pathak, Nino Vieillard, "
+               "Ramona Merhej, Sarah Perrin, Tatiana Matejovicova, Alexandre Rame, Morgane Riviere")
+        self.assertTrue(is_bibliography(entry))
+
     def test_chinese_caption_with_english_terms_is_not_untranslated(self):
         caption=("图 3：保留历史使策略无法转向；清除后，采样能找到更多成功。(a) 前向步骤后，池化四个策略。"
                  "(b) 起始状态；oracle：成功的 rollout。(c) 保留的贪心 rollout 失败的起始状态。"

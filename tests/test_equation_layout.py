@@ -18,6 +18,13 @@ class EquationLayoutTest(unittest.TestCase):
             self.assertNotIn("paragraph",text)
 
 
+class NestedArrayTest(unittest.TestCase):
+    def test_array_inside_aligned_is_allowed(self):
+        from paper_translator.render.vision_latex import math_tex
+        value=r"\begin{aligned}\begin{array}{l} a \\ b \end{array}\end{aligned}"
+        self.assertIn("array",math_tex(value))
+
+
 class InlineMathTest(unittest.TestCase):
     def test_summation_ascii_encoding_never_sent_as_math_text(self):
         from paper_translator.legacy.inline_equations import protected_paragraph

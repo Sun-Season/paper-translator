@@ -16,6 +16,7 @@ CITATION=re.compile(r"[（(][A-ZÀ-Ž][^()（）一-鿿]{1,450}?(?:19|20)\d{2}[a
 TEMPLATE_LITERAL = r"(?<!\*)\*[^*\n]*<[A-Za-z_][A-Za-z_ -]*>[^*\n]*\*(?!\*)"
 PROTECTED=re.compile(PROTECTED.pattern+"|"+CITATION.pattern+"|"+TEMPLATE_LITERAL,re.M)
 BIB = re.compile(r"^(?:\[\d+\]\s*)?(?:(?:[A-Z]\.-?){1,3}\s+[\w’'-]+[, .]|(?:[A-Z][\w’-]+\s*,\s*)+[A-Z]\.|[\w -]+\.(?:\s+(?:et al\.|[A-Z][A-Za-z-]+[:,])))")
+NUMBERED = re.compile(r"^\[\d+\]\s*\S")
 REFERENCE_HINT = re.compile(r"(?:arXiv|doi|https?://|\b(?:19|20)\d{2}\b|Proceedings|Conference|Journal|Transactions|Press)",re.I)
 REFERENCE_START = re.compile(r"^(?:\[\d+\]\s*)?(?:[A-ZÀ-Ž][\w’'.-]*\s+){2,}")
 AUTHOR_LIST = re.compile(r"^(?:\[\d+\]\s*)?[^.]{0,120}?,\s*(?:and\s+)?[A-ZÀ-Ž]")
@@ -24,6 +25,8 @@ AUTHOR_LIST = re.compile(r"^(?:\[\d+\]\s*)?[^.]{0,120}?,\s*(?:and\s+)?[A-ZÀ-Ž]
 def is_bibliography(text):
     """判断段落是否为参考文献条目；全名、缩写和前置小写词都需要识别。"""
     if BIB.match(text):return True
+    # 编号条目被分页/分栏拆开后，前半段可能没有年份或 arXiv 号。
+    if NUMBERED.match(text) and (REFERENCE_START.match(text) or AUTHOR_LIST.match(text)):return True
     if not REFERENCE_HINT.search(text):return False
     return bool(REFERENCE_START.match(text) or AUTHOR_LIST.match(text))
 FUNCTION = re.compile(r"\b(?:the|a|an|of|in|to|on|at|for|is|are|was|with|we|our|from|and|than|has|can|which|when|under|between|using|without|across)\b",re.I)

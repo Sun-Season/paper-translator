@@ -72,8 +72,11 @@ def figure_box(page, number):
         return None
     from paper_translator.source.original_tables import table_regions
     from paper_translator.source.source_header import header_region
-    tables = [box for box in table_regions(page).values() if box.y1 <= target.y0 - 1]
-    boundary = max([rect.y1 for _, rect in captions if rect.y1 <= target.y0 - 1] + [box.y1 for box in tables] or [0])
+    # 只取同一栏（横向有重叠）的表题和表格作为上边界，另一栏的图注不能截断本图。
+    overlap = lambda rect: rect.x1 > target.x0 and rect.x0 < target.x1
+    tables = [box for box in table_regions(page).values() if box.y1 <= target.y0 - 1 and overlap(box)]
+    above = [rect.y1 for _, rect in captions if rect.y1 <= target.y0 - 1 and overlap(rect)]
+    boundary = max(above + [box.y1 for box in tables] or [0])
     head = header_region(page)
     if head is not None and target.y0 > head.y1:
         boundary = max(boundary, head.y1 + 2)
@@ -271,3 +274,23 @@ HTML_FIGURE = re.compile(r"<figure>\s*<figcaption>(.*?)</figcaption>\s*</figure>
 def normalize_figure_html(markdown):
     """把模型输出的 <figure><figcaption>…</figcaption></figure> 还原成普通图注段落。"""
     return HTML_FIGURE.sub(lambda match: match.group(1).strip(), markdown)
+
+
+def dedupe_figure_blocks(markdown):
+    """同一页里完全重复的图注或图块只保留第一份（模型偶尔重复输出）。"""
+    chunks = re.split(r"(?m)(^<!-- 原稿第 \d+ 页 -->)", markdown)
+    for index in range(2, len(chunks), 2):
+        blocks = chunks[index].strip().split("\n\n")
+        seen = set()
+        kept = []
+        for block in blocks:
+            text = block.strip()
+            if text.startswith("![") or CAPTION.match(text) or CAPTION_SOURCE.match(text):
+                key = " ".join(text.split())
+                if key in seen:
+                    continue
+                seen.add(key)
+            kept.append(block)
+        if len(kept) != len(blocks):
+            chunks[index] = "\n\n" + "\n\n".join(kept) + "\n\n"
+    return "".join(chunks)

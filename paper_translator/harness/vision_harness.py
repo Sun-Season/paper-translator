@@ -306,6 +306,32 @@ def strip_unresolved_images(draft):
     return re.sub(r"!\[[^\]]*\]\(([^)]+)\)",replace,draft)
 
 
+def repair_reference_continuations(draft,source):
+    """参考文献跨页时，续接段被模型译成中文；用原页英文续文替换。"""
+    chunks=re.split(r"(?m)(^<!-- 原稿第 \d+ 页 -->)",draft)
+    sections=chunks[2::2]
+    start=next((i for i,text in enumerate(sections)
+                if re.search(r"(?m)^#+\s*(?:参考文献|References)\s*$",text)),None)
+    if start is None:return draft,[]
+    repaired=[]
+    with pdf.open(source) as doc:
+        for i in range(start+1,len(sections)):
+            if i>=len(doc):break
+            page_text=doc[i].get_text()
+            if re.match(r"\s*\[\d+\]",page_text):continue
+            match=re.search(r"(?m)^\[\d+\]",page_text)
+            tail=(page_text[:match.start()] if match else page_text).strip()
+            tail=re.sub(r"(?<=[A-Za-z])-[ \t]*\n[ \t]*(?=[a-z])","",tail)
+            tail=" ".join(tail.split())
+            if not tail:continue
+            blocks=chunks[2*i+2].strip().split("\n\n")
+            if not blocks or not re.search(r"[\u3400-\u9fff]",blocks[0]):continue
+            blocks[0]=tail
+            chunks[2*i+2]="\n\n"+"\n\n".join(blocks)+"\n\n"
+            repaired.append({"source_page":i+1,"text":tail[:80]})
+    return "".join(chunks),repaired
+
+
 def verified_export(directory,source,args):
     from paper_translator.render.vision_latex import render_vision_latex
     from paper_translator.translation.prose_language import check_draft, inspect_page, normalized, source_pages
@@ -319,7 +345,9 @@ def verified_export(directory,source,args):
     logpath.write_text(json.dumps(log,ensure_ascii=False,indent=2))
     refs=source_pages(source)
     draft, math_records = repair_split_math(path.read_text())
-    from paper_translator.source.figure_groups import restore_placeholder_figures, restore_groups, normalize_figure_html
+    from paper_translator.source.figure_groups import restore_placeholder_figures, restore_groups, normalize_figure_html, dedupe_figure_blocks
+    draft, repaired_references = repair_reference_continuations(draft, source)
+    draft = dedupe_figure_blocks(draft)
     draft = normalize_figure_html(draft)
     draft, restored_figures = restore_placeholder_figures(draft, source, directory)
     draft = strip_unresolved_images(draft)
@@ -364,13 +392,17 @@ def verified_export(directory,source,args):
                 if args and args.target.lower().startswith("zh"):
                     kept={(r["page"],r["source"]) for r in log if r["action"]=="keep"}
                     pages=re.split(r"(?m)^<!-- 原稿第 \d+ 页 -->",(run/"paper.md").read_text())[1:]
+                    reference_from=next((i+1 for i,text in enumerate(pages)
+                                         if re.search(r"(?m)^#+\s*(?:参考文献|References)\s*$",text)),None)
                     for i,text in enumerate(pages):
+                        if reference_from and i+1>reference_from:continue
                         for j,b,owner in inspect_page(text,i,refs):
                             if (i+1,b) not in kept:
                                 issues.append({"code":"unchecked_english","object":f"paragraph-{j}","source_page":i+1,"detail":b[:100]})
                     with pdf.open(run/"paper.pdf") as output:
                         printed=[normalized(pg.get_text()) for pg in output]
                     for k,record in enumerate(log):
+                        if reference_from and record["page"]>reference_from:continue
                         words=normalized(record["source"]).split()
                         if record["action"] not in ("translate","duplicate") or len(words)<14:
                             continue
@@ -405,6 +437,7 @@ def verified_export(directory,source,args):
         if restored_figures:report["placeholder_figures"]=restored_figures
         if removed_figure_text:report["figure_text_removed"]=removed_figure_text
         if ensured_figures:report["ensured_figures"]=ensured_figures
+        if repaired_references:report["reference_continuations"]=repaired_references
         if removed_glyphs:report["glyphs_removed"]=removed_glyphs
         (directory/"质量验收.json").write_text(json.dumps(report,ensure_ascii=False,indent=2))
         if report["references"]["translated"]:
