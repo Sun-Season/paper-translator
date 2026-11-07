@@ -249,9 +249,16 @@ def markdown_blocks(page, blocks, destination, number, dpi):
 
 def boundary_hint(end,start):
     # 仅在两页确实从句中断开时传入续句，并截在第一个句末。
-    if not re.search(r"[a-z,]$",end.strip()) or not re.match(r"^[a-z]+\b",start):
-        return ""
+    end=re.sub(r"\n?[^\n]*arXiv:\S+[^\n]*$","",end).rstrip()
+    start=start.lstrip()
     if re.match(r"^(?:arXiv|https?)",start,re.I):
+        return ""
+    hyphen=end.endswith("-")
+    if hyphen:
+        # 连字符断页：下一页开头常先排图注，不能依赖它的首词来拼接。
+        tail=re.split(r"(?<=[.!?])\s+",end)[-1][-160:]
+        return "Previous-page fragment ends mid-word: "+tail+" (the current page continues this word and sentence)"
+    if not re.search(r"[a-z,]$",end) or not re.match(r"^[a-z]+\b",start):
         return ""
     tail=re.split(r"(?<=[.!?])\s+",end)[-1][-160:]
     head=re.split(r"(?<=[.!?])\s+|\n\s*\n",start,1)[0][:160]
@@ -263,7 +270,9 @@ def translate_markdown(source, destination, args):
     with pymupdf.open(source) as original:
         excerpts = []
         for page in original:
-            blocks = [b[4].strip() for b in page.get_text("blocks") if len(b[4].strip()) > 8]
+            blocks = [b[4].strip() for b in page.get_text("blocks")
+                      if len(b[4].strip()) > 8 and b[0] >= page.rect.width*.06
+                      and b[2] <= page.rect.width*.94]
             excerpts.append(("\n".join(blocks)[:1200], "\n".join(blocks)[-1200:]))
     cache_id = hashlib.sha256(source.read_bytes() + repr((args.base_url,args.model,args.target,INSTRUCTIONS,"sentence-context-v2")).encode()).hexdigest()
     cache = Path(os.environ.get("PAPER_JOB_DIR") or Path.home()/"Library/Caches/paper-translator/jobs")/"vision-pages"/cache_id

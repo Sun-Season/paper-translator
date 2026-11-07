@@ -40,3 +40,11 @@ class PageChromeTest(unittest.TestCase):
         self.assertIn("Body text",text)
         self.assertNotIn("Reviewers",text)
         doc.close()
+
+    def test_rotated_margin_stamp_is_masked(self):
+        doc=pdf.open()
+        page=doc.new_page(width=600,height=800)
+        page.insert_text((10,300),"arXiv:2511.14759v2",fontsize=8,rotate=90)
+        boxes=chrome_boxes(page)
+        self.assertTrue(any(b.x1<40 for b in boxes))
+        doc.close()

@@ -21,19 +21,22 @@ def chrome_boxes(page):
             text="".join(s["text"] for s in line["spans"]).strip()
             if not text:continue
             lines.append((pymupdf.Rect(line["bbox"]),
-                          max(s["size"] for s in line["spans"]),text))
+                          max(s["size"] for s in line["spans"]),text,
+                          abs(line.get("dir",(1,0))[0])<.9))
     if not lines:return []
     weights=Counter()
-    for rect,size,text in lines:
+    for rect,size,text,rotated in lines:
         if height*.15<rect.y0<height*.85:
             weights[round(size,1)]+=len(text)
     body_size=weights.most_common(1)[0][0] if weights else sorted(s for _,s,_ in lines)[len(lines)//2]
     boxes=[]
-    for rect,size,text in lines:
+    for rect,size,text,rotated in lines:
+        margin=rect.x1<page.rect.width*.08 or rect.x0>page.rect.width*.92
         header=rect.y1<height*TOP_BAND and size<=body_size*1.05
+        stamp=rotated and margin
         footer=rect.y0>height*BOTTOM_BAND and (size<body_size*FINE_PRINT
                                                or re.fullmatch(r"[0-9]{1,4}",text))
-        if header or footer:boxes.append(rect)
+        if header or footer or stamp:boxes.append(rect)
     return boxes
 
 

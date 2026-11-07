@@ -19,6 +19,12 @@ class HeadingNumberingTest(unittest.TestCase):
         out=protect_emphasis("**RL 预训练π*.。** 它使用RL。")
         self.assertIn(r"**RL 预训练π\*.。**",out)
 
+    def test_math_asterisk_in_bold_is_not_escaped(self):
+        from paper_translator.render.vision_latex import protect_emphasis
+        out=protect_emphasis(r"**图 3：$\pi^*_{0.6}$ 说明**")
+        self.assertIn(r"$\pi^*_{0.6}$",out)
+        self.assertNotIn(r"\*",out)
+
 
 class HeadingTest(unittest.TestCase):
     def test_body_titles_translate_but_source_header_stays(self):

@@ -90,9 +90,13 @@ def duplicate_of_header(text,header):
 
 
 def protect_emphasis(markdown):
-    """转义加粗片段内部的星号，避免 π* 之类的记号和 ** 混淆而被当作普通文本。"""
+    """转义加粗片段内部的星号，公式里的 * 保持原样。"""
     def escape(match):
-        return "**" + match.group(1).replace("*", r"\*") + "**"
+        parts = re.split(r"(\$[^$]+\$|\\\(.*?\\\))", match.group(1))
+        text = "".join(part if (part.startswith("$") and part.endswith("$"))
+                       or (part.startswith(r"\(") and part.endswith(r"\)"))
+                       else part.replace("*", r"\*") for part in parts)
+        return "**" + text + "**"
     return re.sub(r"\*\*([^\n]+?)\*\*", escape, markdown)
 
 
@@ -178,6 +182,7 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
     md=re.sub(r"\\eqno\s*\{?\((\d+)\)\}?",r"\\tag{\1}",md)
     md=re.sub(r"\\hfill\s+Eq\.\s*\((\d+)\)",r"　式（\1）",md)
     md=md.replace("<br>"," / ").replace("<br/>"," / ")
+    md=re.sub(r"(?m)^(参考文献|References)\s*$",r"## \1",md)
     md=protect_emphasis(md)
     if source:
         md=number_headings(md,source_heading_prefixes(source))
@@ -247,7 +252,11 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                     pieces[k]="".join(escape(c)+(r"\allowbreak{}" if c in "/._-?&=" else "") for c in piece)
                 else:
                     pieces[k]=escape(piece)
-            out.append("".join(pieces))
+            chunk="".join(pieces)
+            # DOI 在斜杠和点后给出断点，避免长 DOI 把整行顶出边界。
+            chunk=re.sub(r"(10\.\d{4,9}/)([0-9A-Za-z.]+)",
+                         lambda m:m.group(1)+r"\allowbreak{}"+m.group(2).replace(".",r".\allowbreak{}"),chunk)
+            out.append(chunk)
         return "".join(out)
     def linked(text):
         def sub(m):
@@ -263,6 +272,8 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
             tag=child.tag
             if tag=="span" and "math" in child.get("class","").split():
                 val=math_tex(child.text_content()[2:-2])
+                # 长行内公式在等号/逗号/斜杠处给出断点，避免整块公式超出栏宽。
+                val=re.sub(r"([=,/])", r"\1\\allowbreak{}", val)
                 t+=r"\("+val+r"\)"
             else:
                 v=inline(child,links and tag!="a")

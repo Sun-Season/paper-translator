@@ -313,7 +313,7 @@ def repair_reference_continuations(draft,source):
     chunks=re.split(r"(?m)(^<!-- 原稿第 \d+ 页 -->)",draft)
     sections=chunks[2::2]
     start=next((i for i,text in enumerate(sections)
-                if re.search(r"(?m)^#+\s*(?:参考文献|References)\s*$",text)),None)
+                if re.search(r"(?m)^\s*#*\s*(?:参考文献|References)\s*$",text)),None)
     if start is None:return draft,[]
     repaired=[]
     with pdf.open(source) as doc:
@@ -396,7 +396,7 @@ def verified_export(directory,source,args):
                     kept={(r["page"],r["source"]) for r in log if r["action"]=="keep"}
                     pages=re.split(r"(?m)^<!-- 原稿第 \d+ 页 -->",(run/"paper.md").read_text())[1:]
                     reference_from=next((i+1 for i,text in enumerate(pages)
-                                         if re.search(r"(?m)^#+\s*(?:参考文献|References)\s*$",text)),None)
+                                         if re.search(r"(?m)^\s*#*\s*(?:参考文献|References)\s*$",text)),None)
                     for i,text in enumerate(pages):
                         if reference_from and i+1>reference_from:continue
                         for j,b,owner in inspect_page(text,i,refs):

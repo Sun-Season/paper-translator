@@ -170,7 +170,9 @@ PAPER_PREAMBLE=r"""\documentclass[11pt]{article}
 \hypersetup{colorlinks=true,linkcolor=blue}
 \setlength{\columnsep}{20bp}\setlength{\parindent}{0pt}
 \setlength{\parskip}{3pt plus 1pt}\linespread{1.13}
-\setlength{\emergencystretch}{2em}
+\setlength{\emergencystretch}{4em}
+\relpenalty=0
+\binoppenalty=0
 \newlength{\bodyindent}
 \begin{document}\raggedright
 \settowidth{\bodyindent}{正文}
