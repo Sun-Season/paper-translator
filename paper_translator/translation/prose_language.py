@@ -279,9 +279,12 @@ def check_draft(path,source,args):
     refs=source_pages(source)
     if len(chunks)!=2*len(refs)+1:raise ValueError("无法对齐译稿的原页标记。")
     contexts={n:chunks[2*n+2] for n in range(len(refs))}
+    reference_from=next((i+1 for i,text in contexts.items()
+                         if re.search(r"(?m)^\s*#*\s*(?:参考文献|References)\s*$",text)),None)
     log=[]
     for deferred in (True,False):
         for i in range(len(refs)):
+            if reference_from and i+1>reference_from:continue
             if not deferred and not any(o==i+1 for _,_,o in inspect_page(contexts[i],i,refs)):
                 continue
             fixed,records=check_page(contexts[i],i,refs,contexts,args,defer_next=deferred)

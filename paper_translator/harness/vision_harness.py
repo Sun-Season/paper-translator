@@ -334,6 +334,33 @@ def repair_reference_continuations(draft,source):
     return "".join(chunks),repaired
 
 
+def inspect_equations(run,splits):
+    """读取本次编译记录：过宽公式安排拆行，最终仍过宽或缩得过小则报告。"""
+    from paper_translator.render.equation_split import split_equation
+    log=run/"latex"/"paper.log"
+    page=run/"equations.json"
+    if not log.is_file() or not page.is_file():
+        return [],splits,False
+    equations=json.loads(page.read_text())
+    text=log.read_text(errors="replace")
+    issues=[];changed=False
+    for match in re.finditer(r"EQWIDTH:([^\s:]+):([\d.]+)pt:([\d.]+)pt",text):
+        key,width,line=match[1],float(match[2]),float(match[3])
+        if width<=line+0.5:continue
+        if key not in splits:
+            candidate=split_equation(equations.get(key,""),width_em=max(8.0,(line-8)/10.95/1.5))
+            if candidate:
+                splits[key]=candidate;changed=True;continue
+        issues.append({"code":"equation_overflow","object":"eq-"+key,"source_page":None,
+                       "detail":f"公式宽 {width:.1f}pt，超过栏宽 {line:.1f}pt"})
+    for match in re.finditer(r"EQSCALE:([\d.]+)pt:([\d.]+)pt",text):
+        width,line=float(match[1]),float(match[2])
+        if line and width/line<0.95:
+            issues.append({"code":"equation_overshrink","object":"latex","source_page":None,
+                           "detail":f"整条公式被缩小到 {width/line:.2f} 倍才放进栏宽"})
+    return issues,splits,changed
+
+
 def verified_export(directory,source,args):
     from paper_translator.render.vision_latex import render_vision_latex
     from paper_translator.translation.prose_language import check_draft, inspect_page, normalized, source_pages
@@ -377,6 +404,7 @@ def verified_export(directory,source,args):
         report={"inline_math":math_records,"source_inventory":objects,"attempts":[],"scope":"中文正文语言、英文段落的原页归属、识别到的编号图表、图像绘制、表体与子表、内部链接、异常稀疏页。未逐句校对翻译语义。"}
         best=None
         previous=None
+        equation_splits={}
         for count in range(3):
             run=Path(temp)/str(count)
             run.mkdir()
@@ -387,8 +415,11 @@ def verified_export(directory,source,args):
             if config.exists(): shutil.copyfile(config, run/"layout.json")
             try:
                 render_vision_latex(run,source,args,prepared_draft=count>0,
-                                    crop_boxes={c["path"]:pdf.Rect(c["box"]) for c in crops if "box" in c})
+                                    crop_boxes={c["path"]:pdf.Rect(c["box"]) for c in crops if "box" in c},
+                                    equation_splits=equation_splits)
                 issues=audit(original,run,objects,crops)
+                equation_issues,equation_splits,splits_changed=inspect_equations(run,equation_splits)
+                issues.extend(equation_issues)
                 for record in math_records:
                     if record["before"] == record["after"]:
                         issues.append({"code":"split_inline_math","object":record["before"],"source_page":record["source_page"],"detail":"缺少唯一的完整公式可供核对"})
@@ -419,6 +450,11 @@ def verified_export(directory,source,args):
                 break
             entry={"attempt":count+1,"issues":issues}
             report["attempts"].append(entry)
+            if splits_changed and count<2:
+                best=run
+                report.update(selected_attempt=count+1,status="needs_review",remaining=issues)
+                previous=None
+                continue
             keys={(i["code"],i["source_page"],i["object"]) for i in issues}
             if previous is not None and not keys<previous:
                 break

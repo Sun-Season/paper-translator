@@ -130,7 +130,7 @@ def number_headings(markdown, prefixes):
     return "\n".join(lines)
 
 
-def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,crop_boxes=None):
+def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,crop_boxes=None,equation_splits=None):
     from paper_translator.translation.vision_pdf import source_links
     directory=Path(directory)
     from paper_translator.config.layout_policy import load_layout, configure_preamble
@@ -338,6 +338,7 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                     anchors.add({"figure":"fig-","table":"tab-","algorithm":"alg-"}.get(obj["type"],"")+str(obj["number"]))
             anchors.update("grid-"+Path(name).stem.replace("source-table-","grid-") for name in source_tables)
         body=[]
+        equations={}
         header_end = draft_header_end(nodes, origins) if source else None
         if source:
             with pymupdf.open(source) as original:
@@ -624,13 +625,43 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                 body.extend([*(r"\item "+inline(c) for c in n),"\\end{"+env+"}"])
             elif len(n)==1 and "display" in n[0].get("class","").split():
                 val=math_tex(n[0].text_content()[2:-2])
-                tag=re.search(r"\\tag\{(\d+)\}",val)
-                num=""
+                from paper_translator.render.equation_split import _width_em
+                tag=(re.search(r"\\tag\{(\d+)\}",val)
+                     or re.search(r"\\quad\s*\((\d+)\)\s*$",val))
                 if tag:
-                    num=dest("eq-"+tag[1])+r"\quad("+tag[1]+")"
                     val=val[:tag.start()]+val[tag.end():]
                 if r"\\" in val and r"\begin" not in val: val=r"\begin{gathered}"+val+r"\end{gathered}"
-                equation=r"\par{\centering\fitmath{"+val+"}{"+num+r"}\par}"
+                key=tag[1] if tag else "u"+str(len(equations))
+                equations[key]=val
+                inner=(equation_splits or {}).get(key,val)
+                measure=(r"\setbox\eqbox\hbox{$\displaystyle "+inner+r"$}"
+                         r"\typeout{EQWIDTH:"+key+r":\the\wd\eqbox:\the\linewidth}")
+                if tag:
+                    equation=(dest("eq-"+tag[1])+measure+r"\["+inner+r"\tag{"+tag[1]+r"}\]")
+                else:
+                    equation=(measure+r"\["+inner+r"\]")
+                rect=eq_boxes.get((origins[i],tag[1])) if tag else None
+                limit=((widths[origins[i]]-left-right)/2-8) if dual else (widths[origins[i]]-left-right-8)
+                if tag and rect is not None and _width_em(val)*10.95>limit:
+                    # 排不进栏宽时保留原稿公式（矢量、原始换行/对齐和编号），不缩小字号。
+                    asset_name="eq-"+tag[1]+"-original.pdf"
+                    with pymupdf.open(source) as original, pymupdf.open() as asset:
+                        page=original[origins[i]]
+                        target=asset.new_page(width=rect.width,height=rect.height)
+                        target.show_pdf_page(target.rect,original,page.number,clip=rect)
+                        asset.save(work/asset_name)
+                    (directory/"figures").mkdir(exist_ok=True)
+                    shutil.copyfile(work/asset_name,directory/"figures"/asset_name)
+                    wide=dual and spans_gutter(rect,widths[origins[i]])
+                    figure=r"\includegraphics[width=\linewidth,height=.9\textheight,keepaspectratio]{"+asset_name+"}"
+                    if wide:
+                        equation=r"\hypertarget{eq-"+tag[1]+r"}{}\begin{figure*}[!tp]"+figure+r"\end{figure*}"
+                    else:
+                        equation=r"\hypertarget{eq-"+tag[1]+r"}{}\par{\centering "+figure+r"\par}"
+                    body.append(equation); continue
+                if dual and rect is not None and spans_gutter(rect,widths[origins[i]]):
+                    equation=r"\begin{figure*}[!tp]"+equation+r"\end{figure*}"
+                body.append(equation)
                 rect=eq_boxes.get((origins[i],tag[1])) if tag else None
                 if dual and rect is not None and spans_gutter(rect,widths[origins[i]]):
                     equation=r"\begin{figure*}[!tp]"+equation+r"\end{figure*}"
@@ -658,9 +689,10 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
 \renewcommand{\textfraction}{.07}
 \setcounter{dbltopnumber}{3}
 \newsavebox{\eqbox}
-\newcommand{\fitmath}[2]{\sbox{\eqbox}{$\displaystyle #1$#2}\ifdim\wd\eqbox>\linewidth\resizebox{\linewidth}{!}{\usebox{\eqbox}}\else\usebox{\eqbox}\fi}
+\newcommand{\fitmath}[2]{\sbox{\eqbox}{$\displaystyle #1$#2}\ifdim\wd\eqbox>\linewidth\typeout{EQSCALE:\the\wd\eqbox:\the\linewidth}\resizebox{\linewidth}{!}{\usebox{\eqbox}}\else\usebox{\eqbox}\fi}
 """
         (directory/"layout-objects.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2))
+        (directory/"equations.json").write_text(json.dumps(equations,ensure_ascii=False,indent=2))
         compile_paper(work,directory/"paper.pdf",body,tex_engine(),preamble.replace(r"\begin{document}",extra+r"\begin{document}"))
 
         if source:
