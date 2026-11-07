@@ -6,6 +6,13 @@ from unittest.mock import patch
 from paper_translator.translation.prose_language import suspect, ownership, normalized, check_page, is_bibliography, untranslated_page
 
 
+class ReferenceRangeTest(TestCase):
+    def test_range_stops_before_appendix(self):
+        from paper_translator.translation.prose_language import reference_range
+        sections=["正文", "参考文献\n[1] A. Author", "附录\nA. 贡献"]
+        self.assertEqual(reference_range(sections), (2, 3))
+
+
 class ProseCheckTest(TestCase):
     def test_author_list_with_institution_heading(self):
         self.assertFalse(suspect("## Physical Intelligence\nKevin Black, Noah Brown, James Darpinian, Karan Dhabalia"))

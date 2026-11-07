@@ -273,18 +273,28 @@ def check_page(text,i,sources,neighbors,args,*,defer_next=False):
     return "\n\n".join(b for b in parts if b),records
 
 
+def reference_range(sections):
+    """参考文献所在页的范围（1 基）：从“参考文献”标题到附录标题之前。"""
+    start=next((i+1 for i,text in enumerate(sections)
+                if re.search(r"(?m)^\s*#*\s*(?:参考文献|References)\s*$",text)),None)
+    if not start:return None,None
+    end=next((i+1 for i,text in enumerate(sections)
+              if i+1>start and re.search(r"(?m)^\s*#*\s*(?:附录|Appendix)\s*$|^\s*#+\s*(?:附录|Appendix)\b",text)),None)
+    return start,end
+
+
 def check_draft(path,source,args):
     if not args.target.lower().startswith("zh"):return []
     chunks=re.split(MARKER,path.read_text())
     refs=source_pages(source)
     if len(chunks)!=2*len(refs)+1:raise ValueError("无法对齐译稿的原页标记。")
     contexts={n:chunks[2*n+2] for n in range(len(refs))}
-    reference_from=next((i+1 for i,text in contexts.items()
-                         if re.search(r"(?m)^\s*#*\s*(?:参考文献|References)\s*$",text)),None)
+    reference_from,reference_until=reference_range([contexts[i] for i in range(len(contexts))])
     log=[]
     for deferred in (True,False):
         for i in range(len(refs)):
-            if reference_from and i+1>reference_from:continue
+            if reference_from and i+1>=reference_from and (reference_until is None or i+1<reference_until):
+                continue
             if not deferred and not any(o==i+1 for _,_,o in inspect_page(contexts[i],i,refs)):
                 continue
             fixed,records=check_page(contexts[i],i,refs,contexts,args,defer_next=deferred)

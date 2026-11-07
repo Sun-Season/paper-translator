@@ -315,9 +315,11 @@ def repair_reference_continuations(draft,source):
     start=next((i for i,text in enumerate(sections)
                 if re.search(r"(?m)^\s*#*\s*(?:参考文献|References)\s*$",text)),None)
     if start is None:return draft,[]
+    end=next((i for i,text in enumerate(sections)
+              if i>start and re.search(r"(?m)^\s*#*\s*(?:附录|Appendix)\s*$|^\s*#+\s*(?:附录|Appendix)\b",text)),len(sections))
     repaired=[]
     with pdf.open(source) as doc:
-        for i in range(start+1,len(sections)):
+        for i in range(start+1,end):
             if i>=len(doc):break
             page_text=doc[i].get_text()
             if re.match(r"\s*\[\d+\]",page_text):continue
@@ -426,17 +428,19 @@ def verified_export(directory,source,args):
                 if args and args.target.lower().startswith("zh"):
                     kept={(r["page"],r["source"]) for r in log if r["action"]=="keep"}
                     pages=re.split(r"(?m)^<!-- 原稿第 \d+ 页 -->",(run/"paper.md").read_text())[1:]
-                    reference_from=next((i+1 for i,text in enumerate(pages)
-                                         if re.search(r"(?m)^\s*#*\s*(?:参考文献|References)\s*$",text)),None)
+                    from paper_translator.translation.prose_language import reference_range
+                    reference_from,reference_until=reference_range(pages)
+                    def in_references(page):
+                        return bool(reference_from) and page>=reference_from and (reference_until is None or page<reference_until)
                     for i,text in enumerate(pages):
-                        if reference_from and i+1>reference_from:continue
+                        if in_references(i+1):continue
                         for j,b,owner in inspect_page(text,i,refs):
                             if (i+1,b) not in kept:
                                 issues.append({"code":"unchecked_english","object":f"paragraph-{j}","source_page":i+1,"detail":b[:100]})
                     with pdf.open(run/"paper.pdf") as output:
                         printed=[normalized(pg.get_text()) for pg in output]
                     for k,record in enumerate(log):
-                        if reference_from and record["page"]>reference_from:continue
+                        if in_references(record["page"]):continue
                         words=normalized(record["source"]).split()
                         if record["action"] not in ("translate","duplicate") or len(words)<14:
                             continue
