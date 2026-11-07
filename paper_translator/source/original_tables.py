@@ -4,10 +4,17 @@ import pymupdf
 
 
 def table_regions(page):
-    blocks=page.get_text("blocks")
+    blocks=[]
+    for block in page.get_text("dict",flags=pymupdf.TEXTFLAGS_TEXT)["blocks"]:
+        lines=[(*line["bbox"],"".join(span["text"] for span in line["spans"])) for line in block.get("lines",[])]
+        labels=[line for line in lines if re.match(r"^(?:Table|表)\s*S?\d+\b",line[4],re.I)]
+        if len(labels)>1:
+            blocks.extend(labels)
+        elif lines:
+            blocks.append((*block["bbox"],"\n".join(line[4] for line in lines)))
     captions=[]
     rules=[g["rect"] for g in page.get_drawings() if g["type"]=="s"
-           and g["rect"].height<1.5 and g["rect"].width>page.rect.width*.22]
+           and g["rect"].height<1.5 and g["rect"].width>page.rect.width*.08]
     for b in blocks:
         m=re.match(r"^(?:Table|表)\s*(S?\d+)\b",b[4],re.I)
         if not m:
@@ -16,7 +23,7 @@ def table_regions(page):
         starts=[r for r in rules if 0<=r.y0-cap.y1<24
                 and min(r.x1,cap.x1)>max(r.x0,cap.x0)]
         if starts:
-            captions.append((m[1],cap,min(starts,key=lambda r:r.y0)))
+            captions.append((m[1],cap,min(starts,key=lambda r:abs((r.x0+r.x1-cap.x0-cap.x1)/2)+abs(r.width-cap.width)*.25)))
     result={}
     for num,cap,first in captions:
         limit=min((c.y0 for _,c,_ in captions if c.y0>first.y0 and c.x0<first.x1 and c.x1>first.x0),default=page.rect.height)

@@ -24,7 +24,7 @@ python3.12 -m venv .venv
 配置 `OPENAI_API_KEY` 后，执行默认视觉流程。
 
 ```sh
-.venv/bin/python translate.py "/路径/论文.pdf"   --backend vision --layout auto --format both   --model qwen3-vl-plus   --base-url https://maas.qianwenaiapi.com/compatible-mode/v1   --out "/路径/译文"
+.venv/bin/python translate.py "/路径/论文.pdf"   --backend vision --layout auto --format both   --model deepseek-flash   --base-url https://api.deepseek.com   --out "/路径/译文"
 ```
 
 也支持 `.venv/bin/python -m paper_translator`，参数相同。直接运行不带后端参数的命令行仍沿用既有的 DeepSeek + LaTeX 路径。
@@ -33,10 +33,12 @@ python3.12 -m venv .venv
 
 - `paper.pdf`、`paper.md`、`figures/` 保存正文和图片。
 - `质量验收.json` 记录程序检查，`视觉审阅记录.json` 和 `每轮修改记录.md` 记录模型复核。
-- `needs_review` 表示仍有未解决问题，应结合报告核对。
+- `视觉待复核.md` 列出已确认、但执行器无法自动落地或仅有轻微的问题；它们不阻断发布。
+- `参考文献检查.json` 统计参考文献条目是否仍为中文；新译稿应保留全部原文条目。
+- `needs_review` 表示仍有阻断问题：候选保存在 `.job` 中，工具不会发布为完成版。
 - 同名 `.job` 目录保存阶段检查点、请求状态和候选版本。失败后用相同命令恢复；参数或代码变化时应使用新输出目录。
 
-题头尽量保留原稿。正文和摘要分别跟随原稿栏式，中文使用宋体，英文和数字使用 Times New Roman。正文首行缩进两字，摘要标签 **_Abstract_** 加粗斜体，摘要正文加粗。
+题头尽量保留原稿。正文和摘要分别跟随原稿栏式，中文使用宋体，英文和数字使用 Times New Roman。正文首行缩进两字，摘要标签 **_Abstract_** 加粗斜体，摘要正文加粗。参考文献条目、作者、题名和会议名保留原文，不翻译或音译。
 
 ## 工程结构
 
@@ -61,3 +63,5 @@ translate.py         兼容现有命令的入口
 默认视觉流程调用用户配置的模型服务。PDF 读取与裁片使用 PyMuPDF 和 pypdfium2，Markdown 解析使用 Pandoc，PDF 排版使用 Tectonic 或 XeLaTeX。本项目实现了流程编排、版式规则、对象验收和视觉修改循环。
 
 其他 PDF 后端使用 PDFMathTranslate-next 2.9.0 与 BabelDOC 0.6.2；两个上游项目均标注 AGPL-3.0。使用或分发相关组件时应遵守各自许可。[PDFMathTranslate-next](https://github.com/PDFMathTranslate-next/PDFMathTranslate-next) · [BabelDOC](https://github.com/funstory-ai/BabelDOC)
+
+默认视觉入口现使用 DeepSeek `deepseek-flash`，读取环境变量 `DEEPSEEK_API_KEY` 或本机 `.env.deepseek.local`。密钥文件不纳入 Git。视觉翻译和审阅仍使用现有 harness，排版仍由 LaTeX 完成。切换服务不会复用其他模型的视觉审阅通过结论。

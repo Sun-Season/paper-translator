@@ -27,8 +27,7 @@ class LayoutTest(unittest.TestCase):
             for y,row in [(82,["Method","Score","Cost","Time"]),(111,["First","90","2","3"]),(134,["Next","95","4","5"])]:
                 for x,value in zip((42,160,280,400),row):p.insert_text((x,y),value)
             tex=table_tex(p,table_regions(p)["6"])
-            row=next(line for line in tex.splitlines() if "First" in line)
-            cells=row.split(" & ")
+            cells=tex.split(" & ")
             self.assertEqual(len(cells),4)
             for cell,value in zip(cells,["First","90","2","3"]):
                 self.assertIn("}"+value+"}",cell)

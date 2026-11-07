@@ -14,25 +14,36 @@ def header_region(page):
                      if re.match(r"^(?:Abstract\b|摘\s*要)", text, re.I)), None)
     if page.rotation or boundary is None:
         return None
-    if any(line["bbox"][1] < boundary and re.match(r"^(?:Fig(?:ure)?\.?|Table|图|表)\s*\d", text, re.I)
-           for line, text in lines):
-        images = [pdf.Rect(im["bbox"]) for im in page.get_image_info() if im["bbox"][1] < boundary]
-        if not images:
+    caption_before = any(line["bbox"][1] < boundary and re.match(r"^(?:Fig(?:ure)?\.?|Table|图|表)\s*\d", text, re.I)
+                         for line, text in lines)
+    title_top = 0
+    if caption_before:
+        candidates=[(line,text) for line,text in lines if text and line["bbox"][1] < boundary
+                    and not text.isdigit()]
+        sizes=[max(s["size"] for s in line["spans"]) for line,text in candidates]
+        if not sizes:
             return None
-        first_image = min(r.y0 for r in images)
-        upper = sorted((line["bbox"][1], line["bbox"][3]) for line, text in lines if text and line["bbox"][3] < first_image)
-        gaps = [(upper[k][0]-max(y[1] for y in upper[:k]), upper[k][0]) for k in range(1,len(upper))]
-        if not gaps:
+        largest=max(sizes)
+        title=[line for (line,text),size in zip(candidates,sizes) if size>=largest*.9]
+        title_top=min(line["bbox"][1] for line in title)
+        title_bottom=max(line["bbox"][3] for line in title)
+        regions=[pdf.Rect(im["bbox"]) for im in page.get_image_info()
+                 if title_bottom < im["bbox"][1] < boundary]
+        regions += [g["rect"] for g in page.get_drawings()
+                    if title_bottom < g["rect"].y0 < boundary and g["rect"].x0>=min(l["bbox"][0] for l in title)-3 and g["rect"].width>page.rect.width*.15
+                    and g["rect"].height>10]
+        if not regions:
             return None
-        gap, boundary = max(gaps)
-        if gap < 10:
-            return None
-    boxes = [pdf.Rect(line["bbox"]) for line, text in lines if text and line["bbox"][3] <= boundary]
+        boundary=min(r.y0 for r in regions)
+    body_lines=[line for line,text in lines if len(text)>35 and not text.isdigit()]
+    body_left=min((line["bbox"][0] for line in body_lines),default=0)
+    boxes = [pdf.Rect(line["bbox"]) for line, text in lines if text and not text.isdigit() and line["bbox"][0]>=body_left-3
+             and title_top-2<=line["bbox"][1] and line["bbox"][3] <= boundary]
     if not boxes:
         return None
-    images = [pdf.Rect(im["bbox"]) for im in page.get_image_info() if im["bbox"][3] <= boundary]
+    images = [pdf.Rect(im["bbox"]) for im in page.get_image_info() if title_top-2<=im["bbox"][1] and im["bbox"][3] <= boundary]
     for drawing in page.get_drawings():
-        if drawing["rect"].y1 <= boundary:
+        if drawing["rect"].x0>=body_left-3 and title_top-2<=drawing["rect"].y0 and drawing["rect"].y1 <= boundary:
             boxes.append(drawing["rect"])
     box = boxes[0]
     for rect in boxes[1:] + images:

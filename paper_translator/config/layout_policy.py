@@ -44,4 +44,5 @@ def configure_preamble(preamble, document):
     return (preamble.replace(r"\setmainfont{Times New Roman}", r"\setmainfont{" + document["latin_font"] + "}")
             .replace(r"\setCJKmainfont{Songti SC}", r"\setCJKmainfont{" + document["cjk_font"] + "}")
             .replace(r"\setlength{\columnsep}{20bp}", r"\setlength{\columnsep}{" + str(document["column_gap_bp"]) + "bp}")
+            .replace(r"\begin{document}\raggedright", r"\begin{document}\leftskip=0pt\rightskip=0pt\parfillskip=0pt plus 1fil")
             .replace(r"\settowidth{\bodyindent}{正文}", r"\settowidth{\bodyindent}{" + "正" * document["body_indent_chars"] + "}"))

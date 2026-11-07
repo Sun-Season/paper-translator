@@ -20,7 +20,7 @@ from paper_translator.source.original_tables import original_table_assets
 from paper_translator.render.native_tables import table_tex
 
 CAP = re.compile(r"^(图|表|Figure|Table)\s*(S?\d+)\s*",re.I)
-SAFE_MATH=set(r"""alpha beta gamma delta epsilon varepsilon zeta eta theta vartheta iota kappa lambda mu nu xi pi varpi rho varrho sigma varsigma tau upsilon phi varphi chi psi omega Gamma Delta Theta Lambda Xi Pi Sigma Upsilon Phi Psi Omega left right big Big bigg Bigg bigl bigr frac dfrac tfrac sqrt sum prod int iint oint lim limits nolimits in notin cup cap union subset subseteq supset supseteq parallel mid vert Vert lVert rVert lvert rvert langle rangle lbrace rbrace ldots cdots dots vdots ddots pm mp times div cdot circ ast to mapsto rightarrow leftarrow Rightarrow Leftrightarrow le leq ge geq ne neq approx equiv sim simeq propto forall exists infty nabla partial emptyset ell mathcal mathbb mathrm mathbf mathit mathsf mathtt text operatorname log ln exp sin cos tan min max arg det hat widehat bar overline underline tilde widetilde vec dot ddot bigcup bigcap bigoplus oplus otimes quad qquad hspace tag displaystyle textstyle scriptstyle scriptscriptstyle underbrace overbrace binom substack begin end boldsymbol perp lfloor rfloor odot uparrow downarrow""".split())
+from paper_translator.config.math_commands import MATH_COMMANDS as SAFE_MATH
 
 
 REFERENCE = re.compile(r"\[[\d,， –—-]+\]|(?:图|表|公式|式|Fig(?:ure)?\.)\s*(?:（S?\d+）|\(S?\d+\)|S?\d+(?![A-Za-z0-9]|\.\d))")
@@ -28,7 +28,7 @@ REFERENCE = re.compile(r"\[[\d,， –—-]+\]|(?:图|表|公式|式|Fig(?:ure)?
 
 def math_tex(value):
     value=value.strip()
-    if re.search(r"[%#$\x00]|\^\^|\\(?:begin|end)\s*\{(?!aligned\}|gathered\}|matrix\}|pmatrix\}|bmatrix\}|cases\})",value):
+    if re.search(r"(?<!\\)[%#$]|\x00|\^\^|\\(?:begin|end)\s*\{(?!aligned\}|gathered\}|matrix\}|pmatrix\}|bmatrix\}|cases\})",value):
         raise ValueError("公式含不支持的 TeX 语法。")
     if set(re.findall(r"\\([A-Za-z]+)",value))-SAFE_MATH:
         raise ValueError("公式含尚未支持的 LaTeX 命令。")
@@ -38,6 +38,12 @@ def math_tex(value):
         if depth<0: break
     if depth: raise ValueError("公式括号不匹配。")
     return value
+
+
+def normalize_adjacent_math(markdown):
+    """保护紧邻数字的行内公式，避免 Markdown 将它解析成普通文字。"""
+    return re.sub(r"(?<![\\$])\$([^$\n]+)\$(?=\d)",
+                  lambda m: m[0]+" " if re.search(r"[\\^_]",m[1]) else m[0], markdown)
 
 
 def figure_order(nodes,captions):
@@ -74,6 +80,16 @@ def figure_order(nodes,captions):
     return order
 
 
+def duplicate_of_header(text,header):
+    """译稿里的标题/作者段落在原稿题头图里已经存在时返回 True。"""
+    if not header or not text:return False
+    from difflib import SequenceMatcher
+    a="".join(re.findall(r"[a-z0-9]+",text.lower()))
+    b="".join(re.findall(r"[a-z0-9]+",header.lower()))
+    if len(a)<12 or not b:return False
+    return a in b or SequenceMatcher(None,a,b).ratio()>=.9
+
+
 def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,crop_boxes=None):
     from paper_translator.translation.vision_pdf import source_links
     directory=Path(directory)
@@ -81,10 +97,14 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
     layout = load_layout(directory)
     object_layout = layout["objects"]
     manifest = {}
+    (directory/"原表保留记录.json").unlink(missing_ok=True)
     (directory/"layout.json").write_text(json.dumps(layout, ensure_ascii=False, indent=2))
     md=(directory/"paper.md").read_text()
     md=re.sub(r"\\cite(?:p|t)?\{([\d,\s]+)\}", lambda m:"["+re.sub(r"\s+","",m[1])+"]", md)
     if source:
+        from paper_translator.source.page_chrome import remove_repeated_headers
+        md,removed_headers=remove_repeated_headers(md,source)
+        (directory/"页眉清理记录.json").write_text(json.dumps(removed_headers,ensure_ascii=False,indent=2))
         from paper_translator.source.figure_groups import restore_groups
         md = restore_groups(md, source, directory)
     source_tables={}
@@ -119,7 +139,7 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
     md=re.sub(r"\\eqno\s*\{?\((\d+)\)\}?",r"\\tag{\1}",md)
     md=re.sub(r"\\hfill\s+Eq\.\s*\((\d+)\)",r"　式（\1）",md)
     md=md.replace("<br>"," / ").replace("<br/>"," / ")
-    root=html.fragment_fromstring(pypandoc.convert_text(md,"html5",format="markdown-raw_html-raw_tex",extra_args=["--mathjax","--wrap=none"]),create_parent="main")
+    root=html.fragment_fromstring(pypandoc.convert_text(normalize_adjacent_math(md),"html5",format="markdown-raw_html-raw_tex",extra_args=["--mathjax","--wrap=none"]),create_parent="main")
     page_index=0
     nodes=[];origins=[]
     for node in root:
@@ -129,12 +149,36 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
         else:
             nodes.append(node);origins.append(page_index)
     captions={}
+    source_caps={}
+    if source:
+        with pymupdf.open(source) as original:
+            for pg in original:
+                source_caps[pg.number]=[(m[1],pymupdf.Rect(b[:4])) for b in pg.get_text("blocks")
+                    if (m:=re.match(r"^Figure\s+(S?\d+)\b",b[4]))]
     for i,n in enumerate(nodes):
         if n.tag not in ("table","figure"):continue
         image=n.find(".//img")
-        original=image is not None and image.get("src") in source_tables
-        for j in ((i-1,i+1) if n.tag=="table" or original else (i+1,i-1)):
-            if 0<=j<len(nodes) and nodes[j].tag=="p" and CAP.match(nodes[j].text_content()) and j not in captions.values():
+        filename=image.get("src") if image is not None else None
+        number=source_tables[filename][2] if filename in source_tables else None
+        kind="table" if n.tag=="table" or filename in source_tables else "figure"
+        if not number and filename in (crop_boxes or {}):
+            box=crop_boxes[filename]
+            candidates=[]
+            for num,rect in source_caps.get(origins[i],[]):
+                gap=rect.y0-box.y1
+                if -18<=gap<75 and min(rect.x1,box.x1)>max(rect.x0,box.x0):
+                    candidates.append((abs(gap),num))
+            if candidates:number=min(candidates)[1]
+        if number:
+            matches=[j for j,node in enumerate(nodes) if origins[j]==origins[i] and node.tag=="p"
+                and (m:=CAP.match(node.text_content())) and m[2]==number
+                and ((m[1].lower() in ("表","table"))==(kind=="table"))]
+            if len(matches)==1 and matches[0] not in captions.values():
+                captions[i]=matches[0]
+                continue
+        for j in ((i-1,i+1) if kind=="table" else (i+1,i-1)):
+            if 0<=j<len(nodes) and nodes[j].tag=="p" and (m:=CAP.match(nodes[j].text_content())) and j not in captions.values():
+                if (m[1].lower() in ("表","table"))!=(kind=="table"):continue
                 captions[i]=j
                 break
     anchors=set()
@@ -201,35 +245,102 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
     with tempfile.TemporaryDirectory(prefix="vision-tex-") as tmp:
         work=Path(tmp)
         if source_tables:
-            from paper_translator.translation.table_language import TableLanguage
-            language=TableLanguage(directory,args)
+            # 表格按原稿矢量整块还原：表内文字保留原文，只翻译表题和表注。
             with pymupdf.open(source) as original:
                 for filename,(page,box,_) in source_tables.items():
-                    tex=table_tex(original[page],box,language,object_layout.get("tab-"+source_tables[filename][2], {}).get("column_widths"))
+                    asset_name=Path(filename).stem+"-original.pdf"
+                    (directory/"tables").mkdir(exist_ok=True)
+                    with pymupdf.open() as asset:
+                        target=asset.new_page(width=box.width,height=box.height)
+                        target.show_pdf_page(target.rect,original,page,clip=box)
+                        asset.save(work/asset_name)
+                    shutil.copyfile(work/asset_name,directory/"tables"/asset_name)
+                    tex=r"\includegraphics[width=\linewidth,height=.82\textheight,keepaspectratio]{"+asset_name+"}"
+                    report=directory/"原表保留记录.json"
+                    records=json.loads(report.read_text()) if report.exists() else {}
+                    records[filename]={"source_page":page+1,"table":source_tables[filename][2],
+                                       "mode":"original_vector","translated_cells":False}
+                    report.write_text(json.dumps(records,ensure_ascii=False,indent=2))
+                    print(f"表 {source_tables[filename][2]} 按原稿矢量还原，表内文字保留原文。",flush=True)
                     tablefile=Path(filename).with_suffix(".tex")
                     (work/tablefile).write_text(tex)
                     (directory/"tables").mkdir(exist_ok=True)
                     (directory/"tables"/tablefile).write_text(tex)
+        if source:
+            from paper_translator.harness.vision_harness import source_inventory
+            with pymupdf.open(source) as original:
+                for obj in source_inventory(original):
+                    anchors.add({"figure":"fig-","table":"tab-","algorithm":"alg-"}.get(obj["type"],"")+str(obj["number"]))
+            anchors.update("eq-"+str(num) for _page,num in eq_boxes)
+            anchors.update("grid-"+Path(name).stem.replace("source-table-","grid-") for name in source_tables)
         body=[]
         header_end = draft_header_end(nodes, origins) if source else None
         if source:
             with pymupdf.open(source) as original:
                 box = header_region(original[0])
+                header_text=""
                 if box and header_end:
+                    with pymupdf.open(source) as original_text:
+                        header_text=" ".join(original_text[0].get_text(clip=box).split())
                     header_width = min(box.width, widths[0] - left - right)
                     with pymupdf.open() as asset:
                         page = asset.new_page(width=box.width, height=box.height)
                         page.show_pdf_page(page.rect, original, 0, clip=box)
                         asset.save(work/"source-header.pdf")
-                    body.append(r"\par\noindent\makebox[\linewidth][c]{\includegraphics[width="
-                                + f"{header_width:.3f}bp" + r"]{source-header.pdf}}\par")
+                    body.append(r"\par\noindent\hspace*{"+f"{max(0,box.x0-left):.3f}bp"+
+                                r"}\includegraphics[width="+f"{header_width:.3f}bp"+r"]{source-header.pdf}\par")
                 else:
                     header_end = None
+        figure_captions={};figure_groups={};figure_members=set()
+        if source:
+            with pymupdf.open(source) as original:
+                for j,caption_index in captions.items():
+                    if nodes[j].tag!='figure':continue
+                    match=CAP.match(nodes[caption_index].text_content())
+                    if not match or not cap_id(match).startswith('fig-'):continue
+                    number=cap_id(match)[4:]
+                    source_cap=next((b for b in original[origins[j]].get_text('blocks')
+                                     if re.match(r'^(?:Figure|Fig\.?)\s*'+re.escape(number)+r'\b',b[4])),None)
+                    if source_cap:figure_captions[j]=pymupdf.Rect(source_cap[:4])
+            unused_figures=set(figure_captions)
+            for j in sorted(figure_captions):
+                if j not in unused_figures:continue
+                rect=figure_captions[j]
+                group=sorted([k for k in unused_figures if origins[k]==origins[j] and abs(figure_captions[k].y0-rect.y0)<4],key=lambda k:figure_captions[k].x0)
+                if len(group)>1 and all(figure_captions[a].x1<figure_captions[b].x0 for a,b in zip(group,group[1:])):
+                    figure_groups[min(group)]=group
+                    figure_members.update(set(group)-{min(group)})
+                    unused_figures.difference_update(group)
+        def copy_figure(j,filename):
+            src=nodes[j].find('.//img').get('src')
+            shutil.copyfile(directory/src,work/filename)
+        sibling_groups={};sibling_members=set()
+        table_nodes={n.find(".//img").get("src"):i for i,n in enumerate(nodes)
+                     if n.tag=="figure" and n.find(".//img") is not None and n.find(".//img").get("src") in source_tables}
+        unused=set(table_nodes)
+        for filename in sorted(table_nodes,key=lambda f:table_nodes[f]):
+            if filename not in unused:continue
+            pg,rect,_=source_tables[filename]
+            group=sorted([f for f in unused if source_tables[f][0]==pg and abs(source_tables[f][1].y0-rect.y0)<3],
+                         key=lambda f:source_tables[f][1].x0)
+            if len(group)>1 and all(source_tables[a][1].x1<source_tables[b][1].x0 for a,b in zip(group,group[1:])):
+                indices=[table_nodes[f] for f in group]
+                leader=min(indices)
+                if all(j in captions for j in indices):
+                    sibling_groups[leader]=group
+                    sibling_members.update(set(indices)-{leader})
+                    unused.difference_update(group)
+        from paper_translator.source.contents import contents_plan,contents_tex
+        (directory/'目录重建记录.json').unlink(missing_ok=True)
+        toc=contents_plan(nodes)
+        if toc:
+            (directory/'目录重建记录.json').write_text(json.dumps(toc,ensure_ascii=False,indent=2))
         in_columns=False
         started=False
         in_abstract=False
         emitted=set()
         def dest(key):
+            anchors.add(key)
             if key in emitted:return ""
             emitted.add(key)
             return r"\hypertarget{"+key+"}{}"
@@ -247,8 +358,10 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
             order = list(range(front_end)) + [k for k in order if k >= front_end]
         for i in order:
             if header_end and i < header_end:continue
+            if header_text and origins[i]==0 and duplicate_of_header(nodes[i].text_content(),header_text):continue
+            if toc and toc['start']<i<toc['end']:continue
             n=nodes[i]
-            if i in captions.values() or i in algorithm_rows:continue
+            if i in captions.values() or i in algorithm_rows or i in sibling_members or i in figure_members:continue
             t=n.text_content().strip()
             is_introduction=bool(re.match(r"^(?:(?:1|I)[.、．]?\s|引言|绪论|Introduction)",t,re.I)) and n.tag in ("h1","h2","h3")
             abstract_label = origins[i]==0 and re.match(r"^(?:摘要|Abstract\b)",t,re.I)
@@ -286,6 +399,14 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                     if original_box and widths:
                         width=original_box.width
                         wide=spans_gutter(original_box,widths[origins[i]])
+            if i in sibling_groups:
+                boxes=[source_tables[f][1] for f in sibling_groups[i]]
+                group_box=pymupdf.Rect(boxes[0])
+                for rectangle in boxes[1:]:group_box|=rectangle
+                width=group_box.width
+                wide=spans_gutter(group_box,widths[origins[i]])
+            if i in figure_groups:
+                wide=True
             object_id = cap_id(CAP.match(nodes[captions[i]].text_content())) if i in captions else None
             if i in algorithms:
                 object_id = "alg-" + algorithms[i][0]
@@ -309,7 +430,7 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                     env=kind+"*" if wide and dual else kind
                     spec="[!tp]" if wide and dual else "[!htbp]"
                     content="\\begin{"+env+"}"+spec+content+"\\end{"+env+"}"
-                body.append(content)
+                body.append("{\\par"+content+"\\par}")
             if i in algorithms:
                 num,rows,spec=algorithms[i]
                 wide=dual and wide
@@ -330,6 +451,24 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                     cap=(dest(cap_id(m))+r"{\raggedright\fontsize{9}{12}\selectfont\noindent\textbf{"
                          +escape(m[0].strip())+r"}\enspace "+caption_text+r"\par}")
                 if n.tag=="figure":
+                    if original_table and i in sibling_groups:
+                        cells=[]
+                        available=(widths[origins[i]]-left-right)/(2 if dual and not wide else 1)
+                        ratio=min(1,available/group_box.width)
+                        for sibling in sibling_groups[i]:
+                            page,rectangle,num=source_tables[sibling]
+                            j=table_nodes[sibling]
+                            caption=deepcopy(nodes[captions[j]])
+                            value=inline(caption)
+                            cell_width=rectangle.width*ratio
+                            grid=Path(sibling).stem.replace("source-table-","grid-")
+                            manifest["tab-"+num]={"source_page":page+1,"span":"wide" if wide else "single",
+                                                  "column_widths":object_layout.get("tab-"+num,{}).get("column_widths")}
+                            cell_cap=cap if j==i else dest("tab-"+num)+r"{\raggedright\fontsize{9}{12}\selectfont\noindent "+value+r"\par}"
+                            cells.append(r"\begin{minipage}[t]{"+f"{cell_width:.3f}bp"+r"}\vspace{0pt}"+
+                                cell_cap+r"\smallskip"+dest(grid)+r"\input{"+Path(sibling).with_suffix(".tex").name+r"}\end{minipage}")
+                        place_graphic(r"\noindent "+r"\hfill".join(cells)+r"\par")
+                        continue
                     if original_table:
                         num=source_tables[filename][2]
                         grid=Path(filename).stem.replace("source-table-","grid-")
@@ -340,12 +479,29 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                                     r"\input{"+Path(filename).with_suffix(".tex").name+
                                     r"}\end{minipage}\par\smallskip")
                         continue
-                    filename=f"figure-{i}.png";shutil.copyfile(path,work/filename)
+                    if i in figure_groups:
+                        cells=[]
+                        group=figure_groups[i]
+                        combined=pymupdf.Rect(figure_captions[group[0]])
+                        for j in group[1:]:combined|=figure_captions[j]
+                        available=widths[origins[i]]-left-right
+                        ratio=min(1,available/combined.width)
+                        for j in group:
+                            image=nodes[j].find('.//img')
+                            asset=f'figure-{j}.png';copy_figure(j,asset)
+                            cn=deepcopy(nodes[captions[j]]);m=CAP.match(cn.text_content());key=cap_id(m)
+                            cell_cap=cap if j==i else dest(key)+r'{\raggedright\fontsize{9}{12}\selectfont\noindent '+inline(cn)+r'\par}'
+                            cell_width=figure_captions[j].width*ratio
+                            manifest[key]={'source_page':origins[j]+1,'span':'wide','column_widths':None}
+                            cells.append(r'\begin{minipage}[t]{'+f'{cell_width:.3f}bp'+r'}\vspace{0pt}\centering\includegraphics[width=\linewidth,height=.40\textheight,keepaspectratio]{'+asset+r'}\par\smallskip'+cell_cap+r'\end{minipage}')
+                        place_graphic(r'\centering '+r'\hfill'.join(cells)+r'\par')
+                        continue
+                    filename=f"figure-{i}.png";copy_figure(i,filename)
                     graphic_width=r"\linewidth"
                     if width and widths:
                         available=widths[origins[i]]-left-right
                         if dual and not wide:available=(available-20)/2
-                        graphic_width=f"{min(width,available):.2f}bp"
+                        graphic_width=f"{min(max(width,figure_captions[i].width) if i in figure_captions else width,available):.2f}bp"
                     place_graphic(r"\centering\begin{minipage}{"+graphic_width+r"}\centering\includegraphics[width=\linewidth,height=.69\textheight,keepaspectratio]{"+filename+r"}\par\vspace{3pt}\hrule\vspace{3pt}"+cap+r"\end{minipage}\par\smallskip")
                 else:
                     if dual and wide: body.append(r"\onecolumn")
@@ -380,12 +536,16 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                 if layout["document"]["abstract_body_style"] == "bold":
                     value = r"\textbf{" + value + "}"
                 body.append(r"\par\noindent " + label + value + r"\par")
-            elif n.tag.startswith("h") and n.tag[1:].isdigit():
+            elif (n.tag.startswith("h") and n.tag[1:].isdigit()) or (toc and i in toc['headings']):
                 if i==0:body.append(r"{\centering\LARGE\bfseries "+inline(n)+r"\par}\medskip")
                 else:
                     if is_introduction:
                         body.append(r"\par\addvspace{"+str(layout["document"]["introduction_gap_bp"])+r"bp}")
                     body.append(r"\pdfbookmark[1]{"+escape(t)+"}{sec-"+str(i)+r"}\subsection*{"+inline(n)+"}")
+                if toc and i in toc['headings']:
+                    body.append(r'\hypertarget{'+toc['headings'][i]['label']+r'}{}\label{'+toc['headings'][i]['label']+'}')
+                if toc and i==toc['start']:
+                    body.append(contents_tex(toc,escape))
             elif n.tag in ("ol","ul"):
                 env="enumerate" if n.tag=="ol" else "itemize"
                 body.append("\\begin{"+env+"}")
@@ -410,10 +570,11 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                 bib=re.match(r"^\[(\d+)\]\s",t)
                 if bib:body.append(r"\par\noindent\hangindent=1.7em "+dest("bib-"+bib[1])+inline(n,False)+r"\par")
                 elif started and n.tag=="p" and re.search(r"[一-鿿]",t) and not t.startswith(("†","‡")):
-                    body.append(r"{\rightskip=0pt\parfillskip=0pt plus 1fil\noindent\hspace*{\bodyindent}"+inline(n)+r"\par}")
+                    body.append(r"{\leftskip=0pt\rightskip=0pt\parfillskip=0pt plus 1fil\noindent\hspace*{\bodyindent}"+inline(n)+r"\par}")
                 else:body.append(r"\par\noindent "+inline(n)+r"\par")
 
-        extra=r"""\usepackage{amsmath,amsfonts,longtable}
+        extra=r"""\usepackage{amsmath,amsfonts,amssymb,longtable}
+\raggedbottom
 \renewcommand{\dblfloatpagefraction}{.80}
 \renewcommand{\floatpagefraction}{.80}
 \renewcommand{\dbltopfraction}{.94}

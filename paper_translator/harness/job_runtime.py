@@ -83,6 +83,16 @@ class Job:
     def publish(self):
         if not (self.stage / "paper.pdf").exists() and not (self.stage / "paper.md").exists():
             raise ValueError("任务未生成可交付文件。")
+        from paper_translator.harness.layout_audit import layout_issues
+        if (self.stage/"paper.pdf").exists():
+            blockers=layout_issues(self.stage)
+            if blockers:
+                atomic_json(self.stage/"发布阻断.json",blockers)
+                raise ValueError("成品存在越界或缺字，已阻止发布；请查看任务内的发布阻断.json。")
+        for report in ("质量验收.json", "视觉审阅记录.json"):
+            path=self.stage/report
+            if path.exists() and json.loads(path.read_text()).get("status")=="needs_review":
+                raise ValueError("验收尚未通过，已阻止发布："+report)
         delivery = self.root / "delivery"
         if delivery.exists():
             shutil.rmtree(delivery)

@@ -28,6 +28,8 @@ def table_tex(page,box,language=None,column_widths=None):
     header=[r for r in rows if r[0][2]<rules[1]]
     data=[r for r in rows if r[0][2]>=rules[1]]
     if not header or not data:raise ValueError("表格缺少可读取的表头或数据行。")
+    numeric_rows=[r for r in data if len(re.findall(r"\d+(?:\.\d+)?", " ".join(c[3] for c in r)))>=2]
+    prose_rows=[r for r in data if len(re.findall(r"\b[A-Za-z]{3,}\b", " ".join(c[3] for c in r)))>16]
     # 数值表使用数据行估计列边界，避免把跨列表头误认为一列。
     numeric=[r for r in data if sum(bool(re.fullmatch(r"[−–—\d.,%+-]+",c[3])) for c in r)>=2]
     dense=bool(numeric and max(map(len,numeric))>=4 and not any(
@@ -40,6 +42,9 @@ def table_tex(page,box,language=None,column_widths=None):
         samples=[r for r in numeric if len(r)==count]
         cuts=[(max(r[i][1] for r in samples)+min(r[i+1][0] for r in samples))/2 for i in range(count-1)]
     else:
+        if len(numeric_rows)>=2 and len(numeric_rows)>=len(data)*.5 and not prose_rows and column_widths is None:
+            from paper_translator.render.table_style import numeric_tex
+            return numeric_tex(page,box,[])
         sample=max(header,key=len)
         count=len(sample)
         cuts=[c[0]-2 for c in sample[1:]]

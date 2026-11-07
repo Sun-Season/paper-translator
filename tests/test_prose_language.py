@@ -3,7 +3,7 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
-from paper_translator.translation.prose_language import suspect, ownership, normalized, check_page
+from paper_translator.translation.prose_language import suspect, ownership, normalized, check_page, is_bibliography, untranslated_page
 
 
 class ProseCheckTest(TestCase):
@@ -23,6 +23,27 @@ class ProseCheckTest(TestCase):
                      '示例指令为 “Please move the red block to the corner of the table.”',
                      "| Name | Description of the data used for training the model |"):
             self.assertFalse(suspect(line),line)
+
+    def test_chinese_caption_with_english_terms_is_not_untranslated(self):
+        caption=("图 3：保留历史使策略无法转向；清除后，采样能找到更多成功。(a) 前向步骤后，池化四个策略。"
+                 "(b) 起始状态；oracle：成功的 rollout。(c) 保留的贪心 rollout 失败的起始状态。"
+                 "95% CI：bootstrap (a, c)，Wilson (b)。")
+        self.assertFalse(suspect(caption))
+
+    def test_full_name_reference_entry_is_recognized(self):
+        entry=("Dong An, Hanqing Wang, Wenguan Wang, Zun Wang, Yan Huang, Keji He, and Liang Wang. "
+               "ETPNav: Evolving Topological Planning for Vision-Language Navigation in Continuous Environments. IEEE TPAMI, 2024.")
+        self.assertTrue(is_bibliography(entry))
+        self.assertFalse(suspect(entry))
+        self.assertFalse(is_bibliography("Dong An, Hanqing Wang, and colleagues argue that the model is better."))
+
+    def test_untranslated_page_detection(self):
+        english=[{'md':"Recent vision-and-language navigation policies act on their visual history, and an incorrect action can take them off the route. "*3}]
+        references=[{'md':"Dong An, Hanqing Wang, Wenguan Wang, Zun Wang, Yan Huang, Keji He, and Liang Wang. ETPNav: Evolving Topological Planning for Vision-Language Navigation. IEEE TPAMI, 2024."}]
+        chinese=[{'md':"近期的视觉-语言导航策略依赖其视觉历史进行决策，一次错误动作就可能让智能体偏离路线。"*6}]
+        self.assertTrue(untranslated_page(english,'zh'))
+        self.assertFalse(untranslated_page(references,'zh'))
+        self.assertFalse(untranslated_page(chinese,'zh'))
 
     def test_origin_uses_source_not_neighbor_order(self):
         line="The model was pretrained on three distinct stages of real robot data."

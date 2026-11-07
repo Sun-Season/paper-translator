@@ -48,7 +48,7 @@ def match_rows(nodes,origins,specs):
                 k=int(step[1])
                 if k!=len(steps)+1:break
                 steps.append(k)
-            elif not re.match(r"^(?://|Require\b|Ensure\b|Input\b|Output\b|输入|输出|要求|需要|前置条件|后置条件|确保|保证)",text,re.I):
+            elif not re.match(r"^(?://|▷|▹|Require\b|Ensure\b|Input\b|Output\b|输入|输出|要求|需要|前置条件|后置条件|确保|保证)",text,re.I):
                 break
             rows.append(j)
             if len(steps)==len(spec["indent"]):
@@ -67,7 +67,7 @@ def typeset(title,nodes,rows,spec,num,inline,anchors):
         text=n.text_content().strip()
         match=STEP.match(text)
         if not match:
-            if text.startswith("//"):
+            if text.startswith(("//", "▷", "▹")):
                 body.append(r"\par\smallskip\noindent\hspace*{"+f"{spec['gutter']:.2f}bp"+r"}\textit{"+inline(n)+r"}\par")
             else:body.append(r"\noindent "+inline(n)+r"\par")
             continue
@@ -84,3 +84,26 @@ def typeset(title,nodes,rows,spec,num,inline,anchors):
                     (r"\hfill "+(r"\hyperlink{eq-"+ref+r"}{式（"+ref+"）}" if "eq-"+ref in anchors else "式（"+ref+"）") if ref else "")+r"\par")
     body.append(r"\vspace{2pt}\hrule height "+f"{bottom:g}bp"+r"\hypertarget{alg-end-"+num+r"}{}\end{minipage}")
     return "\n".join(body)
+
+
+def normalize_algorithm_blocks(markdown):
+    """把挤在同一段的编号步骤拆成独立段落，pandoc 才能按行重建算法。"""
+    chunks = re.split(r"(?m)(^<!-- 原稿第 \d+ 页 -->)", markdown)
+    for index in range(2, len(chunks), 2):
+        blocks = chunks[index].strip().split("\n\n")
+        changed = False
+        result = []
+        for block in blocks:
+            lines = block.splitlines()
+            if sum(bool(STEP.match(line)) for line in lines) >= 2:
+                rebuilt = []
+                for line in lines:
+                    if STEP.match(line) and rebuilt and rebuilt[-1].strip():
+                        rebuilt.append("")
+                    rebuilt.append(line)
+                block = "\n".join(rebuilt)
+                changed = True
+            result.append(block)
+        if changed:
+            chunks[index] = "\n\n" + "\n\n".join(result) + "\n\n"
+    return "".join(chunks)

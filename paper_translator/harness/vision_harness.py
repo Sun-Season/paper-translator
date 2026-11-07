@@ -109,7 +109,8 @@ def row_strings(page,box=None):
 
 
 def audit(source,directory,objects,crops):
-    issues=[]
+    from paper_translator.harness.layout_audit import layout_issues
+    issues=layout_issues(directory)
     def issue(code,p,object_id,detail):
         issues.append({"code":code,"source_page":p,"object":object_id,"detail":detail})
     with pdf.open(directory/"paper.pdf") as out:
@@ -138,13 +139,17 @@ def audit(source,directory,objects,crops):
                     continue
                 start_pt=pdf.Point(dest["to"])*pg.transformation_matrix
                 end_pt=pdf.Point(end["to"])*pg.transformation_matrix
-                rules=[g["rect"] for g in pg.get_drawings() if start_pt.y-4<=g["rect"].y0<=end_pt.y+4
-                       and abs(g["rect"].x0-start_pt.x)<4 and g["rect"].height<1 and g["rect"].width>pg.rect.width*.18]
-                if len(rules)!=3:
+                rules=sorted([g["rect"] for g in pg.get_drawings() if start_pt.y-6<=g["rect"].y0<=end_pt.y+6
+                              and abs(g["rect"].x0-start_pt.x)<4 and g["rect"].height<1
+                              and g["rect"].width>pg.rect.width*.18],key=lambda r:r.y0)
+                # 上下两条横线必须贴合算法首尾；中间可有一条或更多（相邻表格可能共享横线）。
+                if len(rules)<3 or abs(rules[0].y0-start_pt.y)>6 or abs(rules[-1].y0-end_pt.y)>6:
                     issue("algorithm_rules",p,anchor,"算法区域未核实三条横线")
                     continue
                 box=pdf.Rect(rules[0].x0-1,start_pt.y-2,rules[0].x1+1,end_pt.y+2)
-                text=pg.get_textbox(box)
+                # 只取可见文本块；get_textbox 会把嵌入表格里的原始英文层也算进来。
+                text="\n".join(b[4] for b in pg.get_text("blocks")
+                               if box.intersects(pdf.Rect(b[:4])) and b[1]>=box.y0-4)
                 steps=[int(k) for k in re.findall(r"(?m)^\s*(\d+)[:：]",text)]
                 if steps!=obj["steps"] or r"\quad" in text:
                     issue("algorithm_steps",p,anchor,"行号不连续或出现未排版的缩进指令")
@@ -206,6 +211,15 @@ def repair(draft,issues,objects,original_draft=None):
     original_chunks=re.split(r"(?m)(^<!-- 原稿第 \d+ 页 -->)",original_draft or draft)
     actions=[]
     for item in issues:
+        if item["code"]=="missing_glyph":
+            # 字体没有字形时直接删除该字符，避免逐轮重试仍无法出页。
+            match=re.search(r"There is no (.+?) \(U\+([0-9A-Fa-f]{4,6})\)",item.get("detail",""))
+            if match:
+                char=chr(int(match.group(2),16))
+                if any(char in chunk for chunk in chunks):
+                    chunks=[chunk.replace(char,"") for chunk in chunks]
+                    actions.append(item)
+            continue
         p=item["source_page"]
         if not p or 2*p>=len(chunks):continue
         text=chunks[2*p]
@@ -283,22 +297,52 @@ def repair_split_math(draft):
     return re.sub(pattern, restore, draft), records
 
 
+def strip_unresolved_images(draft,directory):
+    """删除模型自造的图片链接，只保留确实存在于 figures/ 的裁片。"""
+    def replace(match):
+        target=match.group(1).strip()
+        if target.startswith("figures/"):return match.group(0)
+        return ""
+    return re.sub(r"!\[[^\]]*\]\(([^)]+)\)",replace,draft)
+
+
 def verified_export(directory,source,args):
     from paper_translator.render.vision_latex import render_vision_latex
     from paper_translator.translation.prose_language import check_draft, inspect_page, normalized, source_pages
     path=directory/"paper.md"
+    if args is not None:
+        from paper_translator.translation.headings import translate_headings
+        translate_headings(path,args)
     logpath=directory/"正文语言检查.json"
     log=json.loads(logpath.read_text()) if logpath.is_file() else []
     log.extend(check_draft(path,source,args) if args is not None else [])
     logpath.write_text(json.dumps(log,ensure_ascii=False,indent=2))
     refs=source_pages(source)
     draft, math_records = repair_split_math(path.read_text())
-    from paper_translator.source.figure_groups import restore_groups
+    from paper_translator.source.figure_groups import restore_placeholder_figures, restore_groups, normalize_figure_html
+    draft = normalize_figure_html(draft)
+    draft, restored_figures = restore_placeholder_figures(draft, source, directory)
+    draft = strip_unresolved_images(draft, directory)
+    from paper_translator.source.figure_groups import strip_figure_text, ensure_missing_figures
+    draft, removed_figure_text = strip_figure_text(draft, source)
+    from paper_translator.render.ruled_algorithm import normalize_algorithm_blocks
+    draft = normalize_algorithm_blocks(draft)
+    draft, ensured_figures = ensure_missing_figures(draft, source, directory, args)
+    from paper_translator.translation.glyphs import strip_pictographs
+    draft, removed_glyphs = strip_pictographs(draft)
     draft = restore_groups(draft, source, directory)
     original_draft=draft
     with pdf.open(source) as original,tempfile.TemporaryDirectory(dir=directory.parent) as temp:
         objects=source_inventory(original)
         crops=raster_inventory(original,directory,draft,objects)
+        from paper_translator.source.crop_complete import complete_crops
+        completed=complete_crops(original,directory,objects,crops)
+        crop_report=directory/'图块边界补全.json'
+        if completed or not crop_report.exists():
+            crop_report.write_text(json.dumps(completed,ensure_ascii=False,indent=2))
+        if completed:
+            objects=source_inventory(original)
+            crops=raster_inventory(original,directory,draft,objects)
         report={"inline_math":math_records,"source_inventory":objects,"attempts":[],"scope":"中文正文语言、英文段落的原页归属、识别到的编号图表、图像绘制、表体与子表、内部链接、异常稀疏页。未逐句校对翻译语义。"}
         best=None
         previous=None
@@ -357,7 +401,16 @@ def verified_export(directory,source,args):
             if path.is_dir():shutil.copytree(path,directory/path.name,dirs_exist_ok=True)
             else:shutil.copyfile(path,directory/path.name)
         report["advisories"]=[name for name in ("LaTeX版式检查.txt","表格待译说明.txt") if (best/name).is_file()]
+        from paper_translator.harness.reference_audit import audit_references
+        report["references"]=audit_references((best/"paper.md").read_text())
+        (directory/"参考文献检查.json").write_text(json.dumps(report["references"],ensure_ascii=False,indent=2))
+        if restored_figures:report["placeholder_figures"]=restored_figures
+        if removed_figure_text:report["figure_text_removed"]=removed_figure_text
+        if ensured_figures:report["ensured_figures"]=ensured_figures
+        if removed_glyphs:report["glyphs_removed"]=removed_glyphs
         (directory/"质量验收.json").write_text(json.dumps(report,ensure_ascii=False,indent=2))
+        if report["references"]["translated"]:
+            print(f"参考文献：{report['references']['translated']}/{report['references']['entries']} 条仍为中文，需重新翻译该区域。",flush=True)
         if report["remaining"]:
             (directory/"待复核.txt").write_text("\n".join(f"{i['object']}（原页 {i['source_page']}） {i['detail']}" for i in report["remaining"]))
         print("成品验收："+("已通过对象检查" if report["status"]=="passed" else "仍需复核，详见待复核.txt"),flush=True)

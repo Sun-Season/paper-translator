@@ -32,7 +32,7 @@ def escape(text):
     for symbol,command in {"∪":"cup","∈":"in","∉":"notin","∑":"sum","∏":"prod","∫":"int",
                            "≈":"approx","≠":"ne","≤":"le","≥":"ge","∝":"propto",
                            "∼":"sim","∇":"nabla","∞":"infty","∥":"Vert","→":"to",
-                           "∗":"ast","−":"mathord{-}","×":"times","∣":"mid"}.items():
+                           "▷":"triangleright","◁":"triangleleft","∗":"ast","−":"mathord{-}","×":"times","∣":"mid"}.items():
         chars[symbol]="\\ensuremath{\\"+command+"}"
     chars["✗"] = r"{\fontspec{Menlo}✗}"
     chars["✓"] = r"{\fontspec{Menlo}✓}"
@@ -186,7 +186,13 @@ def compile_paper(root,output,body,binary,preamble=PAPER_PREAMBLE):
         if proc.returncode:
             raise OSError("LaTeX 编译失败：\n"+(proc.stdout+proc.stderr)[-2200:])
     report=(root/"paper.log").read_text(errors="replace") if (root/"paper.log").is_file() else proc.stderr
+    diagnostics=output.parent/"latex"
+    diagnostics.mkdir(exist_ok=True)
+    for asset in root.iterdir():
+        if asset.suffix in {".tex", ".log", ".png", ".pdf"} and asset.name!="paper.pdf":
+            shutil.copyfile(asset,diagnostics/asset.name)
     warnings=[line for line in report.splitlines() if "Missing character:" in line or "Overfull " in line]
+    (output.parent/"LaTeX版式检查.txt").unlink(missing_ok=True)
     if warnings:
         (output.parent/"LaTeX版式检查.txt").write_text("\n".join(dict.fromkeys(warnings)),encoding="utf8")
     with pdf.open(root/"paper.pdf") as compiled:
