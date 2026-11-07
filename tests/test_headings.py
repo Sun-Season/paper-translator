@@ -6,6 +6,20 @@ import unittest
 from paper_translator.translation.headings import translate_headings
 
 
+class HeadingNumberingTest(unittest.TestCase):
+    def test_source_number_style_becomes_heading(self):
+        from paper_translator.render.vision_latex import number_headings
+        md="IV. 通过优势条件策略的强化学习\n\n1. 数据收集。我们在任务上运行 VLA。"
+        out=number_headings(md,{"IV."})
+        self.assertIn("### IV. 通过优势条件策略的强化学习",out)
+        self.assertIn("1. 数据收集。",out)
+
+    def test_bold_with_inner_asterisk_is_converted(self):
+        from paper_translator.render.vision_latex import protect_emphasis
+        out=protect_emphasis("**RL 预训练π*.。** 它使用RL。")
+        self.assertIn(r"**RL 预训练π\*.。**",out)
+
+
 class HeadingTest(unittest.TestCase):
     def test_body_titles_translate_but_source_header_stays(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -89,6 +89,43 @@ def duplicate_of_header(text,header):
     return a in b or SequenceMatcher(None,a,b).ratio()>=.9
 
 
+def protect_emphasis(markdown):
+    """转义加粗片段内部的星号，避免 π* 之类的记号和 ** 混淆而被当作普通文本。"""
+    def escape(match):
+        return "**" + match.group(1).replace("*", r"\*") + "**"
+    return re.sub(r"\*\*([^\n]+?)\*\*", escape, markdown)
+
+
+def source_heading_prefixes(source):
+    """原稿中的章节编号（IV.、A.、4.）集合。"""
+    prefixes = set()
+    with pymupdf.open(source) as doc:
+        for page in doc:
+            for line in page.get_text().splitlines():
+                text = " ".join(line.split())
+                match = re.match(r"^((?:[IVXLC]+|\d+|[A-Z])(?:\.\d+)*\.)\s+[A-Z][^\n]{2,90}$", text)
+                if match:
+                    prefixes.add(match[1])
+    return prefixes
+
+
+def number_headings(markdown, prefixes):
+    """按原稿编号样式把短标题行标成 Markdown 标题，避免被当成有序列表。"""
+    if not prefixes:
+        return markdown
+    lines = []
+    for line in markdown.splitlines():
+        text = line.strip()
+        match = re.match(r"^((?:[IVXLC]+|\d+|[A-Z])(?:\.\d+)*\.)\s+\S", text)
+        if (match and match[1] in prefixes and len(text) <= 90
+                and not re.search(r"[。！？；]", text)
+                and not text.startswith(("#", "-", ">", "|", "!"))):
+            lines.append("### " + text)
+        else:
+            lines.append(line)
+    return "\n".join(lines)
+
+
 def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,crop_boxes=None):
     from paper_translator.translation.vision_pdf import source_links
     directory=Path(directory)
@@ -138,6 +175,9 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
     md=re.sub(r"\\eqno\s*\{?\((\d+)\)\}?",r"\\tag{\1}",md)
     md=re.sub(r"\\hfill\s+Eq\.\s*\((\d+)\)",r"　式（\1）",md)
     md=md.replace("<br>"," / ").replace("<br/>"," / ")
+    md=protect_emphasis(md)
+    if source:
+        md=number_headings(md,source_heading_prefixes(source))
     root=html.fragment_fromstring(pypandoc.convert_text(normalize_adjacent_math(md),"html5",format="markdown-raw_html-raw_tex",extra_args=["--mathjax","--wrap=none"]),create_parent="main")
     page_index=0
     nodes=[];origins=[]
