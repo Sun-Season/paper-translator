@@ -286,7 +286,8 @@ def dedupe_blocks(markdown):
         for block in blocks:
             text = block.strip()
             key = " ".join(text.split())
-            special = text.startswith("![") or CAPTION.match(text) or CAPTION_SOURCE.match(text)
+            special = (text.startswith(("#", "![")) or CAPTION.match(text)
+                       or CAPTION_SOURCE.match(text))
             if special or len(key) >= 40:
                 if key in seen:
                     continue

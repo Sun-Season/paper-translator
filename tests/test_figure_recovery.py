@@ -90,6 +90,12 @@ class FigureHtmlTest(unittest.TestCase):
 
 
 class DedupeTest(unittest.TestCase):
+    def test_repeated_heading_is_removed(self):
+        draft = "<!-- 原稿第 1 页 -->\n\n## I. 引言\n\n正文。\n\n## I. 引言\n\n更多正文。"
+        fixed = dedupe_blocks(draft)
+        self.assertEqual(fixed.count("## I. 引言"), 1)
+        self.assertIn("更多正文。", fixed)
+
     def test_repeated_long_paragraph_is_removed(self):
         paragraph = "这是一段被模型重复输出的长段落。" * 6
         draft = "<!-- 原稿第 1 页 -->\n\n" + paragraph + "\n\n" + paragraph + "\n\n正文。"
