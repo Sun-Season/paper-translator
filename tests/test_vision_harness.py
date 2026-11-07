@@ -110,3 +110,22 @@ class HarnessTest(unittest.TestCase):
                 d.save(file)
             draft="<!-- 原稿第 1 页 -->\n\n## 3 模型\n\n![架构](figures/a.png)\n\n图2：架构。\n\n<!-- 原稿第 2 页 -->\n\n正文。"
             self.assertIn("![架构](figures/a.png)",clean_boundaries(draft,file))
+
+    def test_missing_glyph_is_replaced_not_deleted(self):
+        from paper_translator.harness.vision_harness import repair
+        draft = "<!-- 原稿第 1 页 -->\n\n集合记作 \u2205。"
+        issues = [{"code": "missing_glyph", "source_page": 1,
+                   "detail": "There is no varnothing (U+2205)"}]
+        fixed, actions = repair(draft, issues, [], draft)
+        self.assertIn(r"\ensuremath{\varnothing}", fixed)
+        self.assertEqual(actions[0]["fix"], "glyph_fallback")
+        self.assertNotIn("\u2205", fixed)
+
+    def test_unmapped_missing_glyph_is_kept(self):
+        from paper_translator.harness.vision_harness import repair
+        draft = "<!-- 原稿第 1 页 -->\n\n符号 \u2603。"
+        issues = [{"code": "missing_glyph", "source_page": 1,
+                   "detail": "There is no snowman (U+2603)"}]
+        fixed, actions = repair(draft, issues, [], draft)
+        self.assertIn("\u2603", fixed)
+        self.assertEqual(actions, [])

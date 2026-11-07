@@ -33,7 +33,7 @@ python3.12 -m venv .venv
 
 - `paper.pdf`、`paper.md`、`figures/` 保存正文和图片。
 - `质量验收.json` 记录程序检查，`视觉审阅记录.json` 和 `每轮修改记录.md` 记录模型复核。
-- `视觉待复核.md` 列出已确认、但执行器无法自动落地或仅有轻微的问题；它们不阻断发布。
+- `视觉待复核.md` 只列出轻微问题；`视觉审阅记录.json` 的 `blocking` 保存所有未解决的 major 意见，并按 `unfixable`、`evidence_insufficient`、`still_problematic` 分类。major 不会因为执行器修不了而降级放行。
 - `参考文献检查.json` 统计参考文献条目是否仍为中文；新译稿应保留全部原文条目。
 - `needs_review` 表示仍有阻断问题：候选保存在 `.job` 中，工具不会发布为完成版。
 - 同名 `.job` 目录保存阶段检查点、请求状态和候选版本。失败后用相同命令恢复；参数或代码变化时应使用新输出目录。

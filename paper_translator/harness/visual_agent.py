@@ -287,8 +287,8 @@ def apply_proposals(source,run,findings):
                         raise ValueError("版式对象与原页或复查条件不匹配。")
                     if not supported_quote(quote,page.get_text()):
                         raise ValueError("版式修改缺少原文依据。")
-                    if "column_widths" in setting and not key.startswith("tab-"):
-                        raise ValueError("只有表格支持列宽修改。")
+                    if "column_widths" in (setting or {}):
+                        raise ValueError("表格按原稿矢量还原，不支持修改列宽。")
                     config = load_layout(run)
                     previous = config["objects"].get(key, {})
                     updated = dict(previous, **setting)
@@ -363,30 +363,36 @@ def score(round_):
 ROUND_FAILURE=("上一候选没有改善验收结果","候选编译或验收失败")
 
 
-def unappliable(finding):
-    """执行器已尝试、但无法落地的意见。
+GATE_ADVISORY="advisory"
+GATE_UNFIXABLE="unfixable"
+GATE_EVIDENCE="evidence_insufficient"
+GATE_STALLED="still_problematic"
 
-    单条意见的定位/校验失败属于工具限制，转入待复核；整轮回退或编译失败
-    仍视为阻断，避免用放宽口径掩盖候选退化。
+
+def classify_finding(finding):
+    """把剩余意见分类。
+
+    轻微意见只记录；major 一律阻断，并区分三种原因：
+    unfixable（执行器试过但落不了地）、evidence_insufficient（未执行/无法定位）、
+    still_problematic（改过但仍未改善）。修不了不等于没问题。
     """
+    if finding.get("severity")!="major":
+        return GATE_ADVISORY
     execution=finding.get("execution") or {}
-    if execution.get("applied") is not False:return False
-    reason=execution.get("reason") or ""
-    return not any(reason.startswith(prefix) for prefix in ROUND_FAILURE)
+    if execution.get("applied") is False:
+        reason=execution.get("reason") or ""
+        if any(reason.startswith(prefix) for prefix in ROUND_FAILURE):
+            return GATE_STALLED
+        return GATE_UNFIXABLE
+    return GATE_EVIDENCE
 
 
 def gate_findings(open_findings):
-    """把剩余意见分成阻断项和仅记录项。
-
-    轻微意见、以及执行器受工具限制无法落地的意见不再阻断发布，避免
-    “永远有意见、永远发布不了”。真正的语义问题仍按 major 阻断。
-    """
     blockers=[];advisories=[]
     for finding in open_findings:
-        if finding.get("severity")!="major" or unappliable(finding):
-            advisories.append(finding)
-        else:
-            blockers.append(finding)
+        category=classify_finding(finding)
+        item=dict(finding);item["gate"]=category
+        (advisories if category==GATE_ADVISORY else blockers).append(item)
     return blockers,advisories
 
 
@@ -495,9 +501,12 @@ def visual_export(directory,source,args):
             if p.is_dir():shutil.copytree(p,directory/p.name,dirs_exist_ok=True)
             else:shutil.copyfile(p,directory/p.name)
         blockers,advisories=gate_findings(best_log["open"])
+        categories={name:sum(f.get("gate")==name for f in blockers)
+                    for name in (GATE_UNFIXABLE,GATE_EVIDENCE,GATE_STALLED)}
         data={"model":args.model,"source_sha256":hashlib.sha256(Path(source).read_bytes()).hexdigest(),
               "selected_round":best_log["round"],"rounds":logs,
               "status":"needs_review" if best_log["engine_remaining"] or blockers else "passed",
+              "categories":categories,
               "blocking":blockers,"advisories":advisories}
         (directory/"视觉审阅记录.json").write_text(json.dumps(data,ensure_ascii=False,indent=2))
         if advisories:

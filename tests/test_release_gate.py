@@ -17,18 +17,18 @@ def finding(**changes):
 
 
 class GateFindingTest(unittest.TestCase):
-    def test_minor_and_unappliable_major_are_advisory(self):
+    def test_minor_is_advisory_and_unfixable_major_blocks(self):
         minor=finding(severity='minor')
         stale=finding(execution={'applied':False,'reason':'本原页译稿中找不到修改片段'})
         real=finding()
         blockers,advisories=gate_findings([minor,stale,real])
-        self.assertEqual(blockers,[real])
-        self.assertEqual(advisories,[minor,stale])
+        self.assertEqual([f['gate'] for f in advisories],['advisory'])
+        self.assertEqual([f['gate'] for f in blockers],['unfixable','evidence_insufficient'])
 
     def test_round_level_failure_still_blocks(self):
         stalled=finding(execution={'applied':False,'reason':'上一候选没有改善验收结果，已回退；请基于当前 PDF 提出其他方案。'})
         blockers,advisories=gate_findings([stalled])
-        self.assertEqual(blockers,[stalled])
+        self.assertEqual([f['gate'] for f in blockers],['still_problematic'])
         self.assertEqual(advisories,[])
 
     def test_review_action_still_blocks(self):
@@ -42,8 +42,8 @@ class GateFindingTest(unittest.TestCase):
         self.assertIsNone(ineffective(finding()))
 
 
-class PublishWithAdvisoriesTest(unittest.TestCase):
-    def test_unappliable_major_does_not_block_publication(self):
+class PublishWithBlockingTest(unittest.TestCase):
+    def test_unfixable_major_blocks_publication(self):
         with TemporaryDirectory() as folder:
             root=Path(folder);stage=root/'stage';stage.mkdir();source=root/'source.pdf'
             source.write_bytes(b'source')
@@ -58,12 +58,14 @@ class PublishWithAdvisoriesTest(unittest.TestCase):
             with patch('paper_translator.harness.vision_harness.verified_export',side_effect=render),\
                  patch('paper_translator.harness.visual_agent.review_round',side_effect=review),\
                  patch('paper_translator.harness.visual_agent.apply_proposals',side_effect=edits):
-                visual_export(stage,source,SimpleNamespace(model='mock',max_review_rounds=2))
+                with self.assertRaises(ValueError):
+                    visual_export(stage,source,SimpleNamespace(model='mock',max_review_rounds=2))
             log=json.loads((stage/'视觉审阅记录.json').read_text())
-            self.assertEqual(log['status'],'passed')
-            self.assertEqual(len(log['advisories']),1)
-            self.assertEqual(log['blocking'],[])
-            self.assertTrue((stage/'视觉待复核.md').is_file())
+            self.assertEqual(log['status'],'needs_review')
+            self.assertEqual(log['advisories'],[])
+            self.assertEqual(len(log['blocking']),1)
+            self.assertEqual(log['blocking'][0]['gate'],'unfixable')
+            self.assertEqual(log['categories']['unfixable'],1)
 
 
 class ReferenceAuditTest(unittest.TestCase):

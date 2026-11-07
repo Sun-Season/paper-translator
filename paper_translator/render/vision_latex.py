@@ -497,7 +497,7 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                 if setting.get("span") in ("single", "wide"):
                     wide = setting["span"] == "wide"
                 manifest[object_id] = {"source_page": origins[i]+1, "span": "wide" if wide else "single",
-                                       "column_widths": setting.get("column_widths")}
+                                       "column_widths": None}
             if dual!=in_columns:
                 if dual and origins[i]==0:
                     body.insert(0,r"\twocolumn[{")
@@ -549,7 +549,7 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                             cell_width=rectangle.width*ratio
                             grid=Path(sibling).stem.replace("source-table-","grid-")
                             manifest["tab-"+num]={"source_page":page+1,"span":"wide" if wide else "single",
-                                                  "column_widths":object_layout.get("tab-"+num,{}).get("column_widths")}
+                                                  "column_widths":None}
                             cell_cap=cap if j==i else dest("tab-"+num)+r"{\raggedright\fontsize{9}{12}\selectfont\noindent "+value+r"\par}"
                             cells.append(r"\begin{minipage}[t]{"+f"{cell_width:.3f}bp"+r"}\vspace{0pt}"+
                                 cell_cap+r"\smallskip"+dest(grid)+r"\input{"+Path(sibling).with_suffix(".tex").name+r"}\end{minipage}")
@@ -592,7 +592,7 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                 else:
                     if dual and wide: body.append(r"\onecolumn")
                     rows=n.xpath(".//tr"); count=max(len(r) for r in rows)
-                    fractions = object_layout.get(object_id, {}).get("column_widths") or [1/count]*count
+                    fractions = [1/count]*count
                     if len(fractions) != count: raise ValueError("表格列宽数量与 Markdown 表格不符。")
                     spec = "".join(r"p{\dimexpr "+str(v)+r"\linewidth-6pt\relax}" for v in fractions)
                     table_env = "tabular" if dual and not wide else "longtable"
@@ -650,6 +650,10 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                 key=tag[1] if tag else "u"+str(len(equations))
                 equations[key]=val
                 inner=(equation_splits or {}).get(key,val)
+                if inner is not val:
+                    from paper_translator.render.equation_split import tokens
+                    if tokens(val)!=tokens(inner):
+                        inner=val
                 measure=(r"\setbox\eqbox\hbox{$\displaystyle "+inner+r"$}"
                          r"\typeout{EQWIDTH:"+key+r":\the\wd\eqbox:\the\linewidth}")
                 if tag:

@@ -1,6 +1,5 @@
 """统一排版参数与有界的对象级修改。"""
 import json
-import math
 from pathlib import Path
 
 DEFAULTS = {
@@ -29,15 +28,10 @@ def load_layout(directory):
 
 
 def validate_object(item):
-    if not isinstance(item, dict) or set(item) - {"span", "column_widths"}:
-        raise ValueError("对象版式只能包含 span 和 column_widths。")
+    if not isinstance(item, dict) or set(item) - {"span"}:
+        raise ValueError("对象版式只能包含 span。")
     if item.get("span", "source") not in ("source", "single", "wide"):
         raise ValueError("对象栏式无效。")
-    widths = item.get("column_widths")
-    if widths is not None and (not isinstance(widths, list) or not 2 <= len(widths) <= 40 or
-            any(type(v) not in (int, float) or not math.isfinite(v) or v < .015 for v in widths) or
-            abs(sum(widths) - 1) > .01):
-        raise ValueError("表格列宽必须为总和为 1 的正数比例。")
 
 
 def configure_preamble(preamble, document):

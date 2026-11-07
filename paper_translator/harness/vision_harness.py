@@ -208,19 +208,33 @@ def audit(source,directory,objects,crops):
     return issues
 
 
+GLYPH_FALLBACK = {
+    "−": r"\ensuremath{-}", "∗": r"\ensuremath{\ast}", "∅": r"\ensuremath{\varnothing}",
+    "→": r"\ensuremath{\rightarrow}", "←": r"\ensuremath{\leftarrow}", "≤": r"\ensuremath{\leq}",
+    "≥": r"\ensuremath{\geq}", "≠": r"\ensuremath{\neq}", "≈": r"\ensuremath{\approx}",
+    "×": r"\ensuremath{\times}", "·": r"\ensuremath{\cdot}", "±": r"\ensuremath{\pm}",
+    "∞": r"\ensuremath{\infty}", "∑": r"\ensuremath{\sum}", "∏": r"\ensuremath{\prod}",
+    "∂": r"\ensuremath{\partial}", "∇": r"\ensuremath{\nabla}", "∈": r"\ensuremath{\in}",
+    "∀": r"\ensuremath{\forall}", "∃": r"\ensuremath{\exists}", "∼": r"\ensuremath{\sim}",
+    "≡": r"\ensuremath{\equiv}", "∝": r"\ensuremath{\propto}", "⊥": r"\ensuremath{\perp}",
+    "∥": r"\ensuremath{\parallel}", "…": r"\ensuremath{\ldots}", "⋅": r"\ensuremath{\cdot}",
+}
+
+
 def repair(draft,issues,objects,original_draft=None):
     chunks=re.split(r"(?m)(^<!-- 原稿第 \d+ 页 -->)",draft)
     original_chunks=re.split(r"(?m)(^<!-- 原稿第 \d+ 页 -->)",original_draft or draft)
     actions=[]
     for item in issues:
         if item["code"]=="missing_glyph":
-            # 字体没有字形时直接删除该字符，避免逐轮重试仍无法出页。
+            # 缺字优先换成数学命令，不删除字符；没有安全映射时保留并继续阻断。
             match=re.search(r"There is no (.+?) \(U\+([0-9A-Fa-f]{4,6})\)",item.get("detail",""))
             if match:
                 char=chr(int(match.group(2),16))
-                if any(char in chunk for chunk in chunks):
-                    chunks=[chunk.replace(char,"") for chunk in chunks]
-                    actions.append(item)
+                replacement=GLYPH_FALLBACK.get(char)
+                if replacement and any(char in chunk for chunk in chunks):
+                    chunks=[chunk.replace(char,replacement) for chunk in chunks]
+                    actions.append({**item,"fix":"glyph_fallback"})
             continue
         p=item["source_page"]
         if not p or 2*p>=len(chunks):continue
@@ -350,9 +364,14 @@ def inspect_equations(run,splits):
         key,width,line=match[1],float(match[2]),float(match[3])
         if width<=line+0.5:continue
         if key not in splits:
+            from paper_translator.render.equation_split import tokens
             candidate=split_equation(equations.get(key,""),width_em=max(8.0,(line-8)/10.95/1.5))
             if candidate:
-                splits[key]=candidate;changed=True;continue
+                if tokens(equations.get(key,""))!=tokens(candidate):
+                    issues.append({"code":"equation_structure_changed","object":"eq-"+key,"source_page":None,
+                                   "detail":"自动分行改变了公式符号，已放弃该分行"})
+                else:
+                    splits[key]=candidate;changed=True;continue
         issues.append({"code":"equation_overflow","object":"eq-"+key,"source_page":None,
                        "detail":f"公式宽 {width:.1f}pt，超过栏宽 {line:.1f}pt"})
     for match in re.finditer(r"EQSCALE:([\d.]+)pt:([\d.]+)pt",text):
