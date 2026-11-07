@@ -218,6 +218,14 @@ GLYPH_FALLBACK = {
     "∀": r"\ensuremath{\forall}", "∃": r"\ensuremath{\exists}", "∼": r"\ensuremath{\sim}",
     "≡": r"\ensuremath{\equiv}", "∝": r"\ensuremath{\propto}", "⊥": r"\ensuremath{\perp}",
     "∥": r"\ensuremath{\parallel}", "…": r"\ensuremath{\ldots}", "⋅": r"\ensuremath{\cdot}",
+    "₀": r"\ensuremath{{}_{0}}", "₁": r"\ensuremath{{}_{1}}", "₂": r"\ensuremath{{}_{2}}",
+    "₃": r"\ensuremath{{}_{3}}", "₄": r"\ensuremath{{}_{4}}", "₅": r"\ensuremath{{}_{5}}",
+    "₆": r"\ensuremath{{}_{6}}", "₇": r"\ensuremath{{}_{7}}", "₈": r"\ensuremath{{}_{8}}",
+    "₉": r"\ensuremath{{}_{9}}",
+    "⁰": r"\ensuremath{{}^{0}}", "¹": r"\ensuremath{{}^{1}}", "²": r"\ensuremath{{}^{2}}",
+    "³": r"\ensuremath{{}^{3}}", "⁴": r"\ensuremath{{}^{4}}", "⁵": r"\ensuremath{{}^{5}}",
+    "⁶": r"\ensuremath{{}^{6}}", "⁷": r"\ensuremath{{}^{7}}", "⁸": r"\ensuremath{{}^{8}}",
+    "⁹": r"\ensuremath{{}^{9}}",
 }
 
 

@@ -398,6 +398,11 @@ def gate_findings(open_findings):
 
 def _copy_asset(src,dst):
     """图块只读且由原稿决定，复制轮次时用硬链接，避免反复写大文件。"""
+    try:
+        if os.path.exists(dst) and os.path.samefile(src,dst):
+            return dst
+    except OSError:
+        pass
     if str(src).endswith(".png"):
         try:os.link(src,dst);return dst
         except OSError:pass
@@ -454,7 +459,7 @@ def visual_export(directory,source,args):
                     continue
                 if archive:
                     from paper_translator.harness.job_runtime import atomic_json
-                    shutil.copytree(run,archive,dirs_exist_ok=True,ignore=shutil.ignore_patterns("candidate-ready.json"))
+                    shutil.copytree(run,archive,dirs_exist_ok=True,copy_function=_copy_asset,ignore=shutil.ignore_patterns("candidate-ready.json"))
                     atomic_json(archive/"candidate-ready.json",{"edits":edits})
             engine=json.loads((run/"质量验收.json").read_text())
             pdf_hash=hashlib.sha256((run/"paper.pdf").read_bytes()).hexdigest()
@@ -462,7 +467,7 @@ def visual_export(directory,source,args):
             pages=review_round(source,run,args,pending)
             if os.environ.get("PAPER_TASK_ROOT"):
                 archive = Path(os.environ["PAPER_TASK_ROOT"]) / "rounds" / str(index + 1)
-                shutil.copytree(run, archive, dirs_exist_ok=True, ignore=shutil.ignore_patterns("candidate-ready.json"))
+                shutil.copytree(run, archive, dirs_exist_ok=True, copy_function=_copy_asset, ignore=shutil.ignore_patterns("candidate-ready.json"))
                 from paper_translator.harness.job_runtime import atomic_json
                 atomic_json(archive / "review.json", pages)
             if any("error" in p for p in pages):

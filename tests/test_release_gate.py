@@ -86,3 +86,10 @@ class ReferenceAuditTest(unittest.TestCase):
                   "## A 相关工作\n\n这里是附录正文，不属于参考文献。\n")
         report=audit_references(markdown)
         self.assertEqual((report['entries'],report['translated']),(1,0))
+
+    def test_copy_asset_same_file_is_noop(self):
+        from paper_translator.harness.visual_agent import _copy_asset
+        with TemporaryDirectory() as folder:
+            path = Path(folder) / "figure-1.png"
+            path.write_bytes(b"png")
+            self.assertEqual(_copy_asset(path, path), path)

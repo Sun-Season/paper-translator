@@ -114,6 +114,23 @@ def source_pages(source):
 
 
 def translate_gaps(args,passage):
+    """整段补译；整段失败时按句子重试，避免一个长段落拖垮整页。"""
+    try:
+        return _translate_gaps_once(args,passage)
+    except ValueError:
+        chunks=[c for c in re.split(r"(?<=[。！？])|(?<=[.!?])\s+",passage) if c.strip()]
+        if len(chunks)<=1:
+            raise
+        values=[]
+        for chunk in chunks:
+            try:
+                values.append(_translate_gaps_once(args,chunk))
+            except ValueError:
+                values.append(chunk)
+        return "".join(values)
+
+
+def _translate_gaps_once(args,passage):
     """整段补译，并用可重排占位符保护公式、数字和字面量。"""
     from paper_translator.cli import request_blocks
     pattern=re.compile(PROTECTED.pattern+r"|\d+(?:[,.]\d+)*",re.M)

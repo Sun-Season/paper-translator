@@ -25,8 +25,18 @@ from paper_translator.config.math_commands import MATH_COMMANDS as SAFE_MATH
 REFERENCE = re.compile(r"\[[\d,， –—-]+\]|(?:图|表|公式|式|Fig(?:ure)?\.)\s*(?:（S?\d+）|\(S?\d+\)|S?\d+(?![A-Za-z0-9]|\.\d))")
 
 
+ALIGN_ENVIRONMENTS={"align":"aligned","align*":"aligned","alignedat":"alignedat",
+                     "gather":"gathered","gather*":"gathered","multline":"gathered",
+                     "multline*":"gathered","flalign":"aligned","flalign*":"aligned",
+                     "split":"aligned","eqnarray":"aligned","eqnarray*":"aligned"}
+
+
 def math_tex(value):
     value=value.strip()
+    # 模型偶尔直接写行间环境名；行内/行间渲染统一换成 amsmath 的内层环境。
+    for source,target in ALIGN_ENVIRONMENTS.items():
+        value=value.replace(r"\begin{"+source+r"}",r"\begin{"+target+r"}")
+        value=value.replace(r"\end{"+source+r"}",r"\end{"+target+r"}")
     if re.search(r"(?<!\\)[%#$]|\x00|\^\^|\\(?:begin|end)\s*\{(?!aligned\}|alignedat\}|gathered\}|matrix\}|pmatrix\}|bmatrix\}|vmatrix\}|Vmatrix\}|cases\}|array\}|smallmatrix\}|split\})",value):
         raise ValueError("公式含不支持的 TeX 语法。")
     if set(re.findall(r"\\([A-Za-z]+)",value))-SAFE_MATH:
