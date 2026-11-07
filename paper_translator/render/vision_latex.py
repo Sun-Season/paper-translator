@@ -679,10 +679,6 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                 if dual and rect is not None and spans_gutter(rect,widths[origins[i]]):
                     equation=r"\begin{figure*}[!tp]"+equation+r"\end{figure*}"
                 body.append(equation)
-                rect=eq_boxes.get((origins[i],tag[1])) if tag else None
-                if dual and rect is not None and spans_gutter(rect,widths[origins[i]]):
-                    equation=r"\begin{figure*}[!tp]"+equation+r"\end{figure*}"
-                body.append(equation)
             elif t:
                 foot=re.match(r"^([¹²³⁴⁵⁶⁷⁸⁹⁰]+)\s*",t)
                 if foot:
