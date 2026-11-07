@@ -232,13 +232,23 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
         if b:anchors.add("bib-"+b[1])
     anchors.update("eq-"+k for k in re.findall(r"\\tag\{(\d+)\}",md))
     def printable(text):
-        parts=re.split(r"(https?://[^\s一-鿿，。；]+)",text)
-        for k,part in enumerate(parts):
-            if k%2:
-                parts[k]="".join(escape(c)+(r"\allowbreak{}" if c in "/._-?&=" else "") for c in part)
-            else:
-                parts[k]=escape(part)
-        return "".join(parts)
+        # 纯文本里偶尔仍带 $…$ 或 \(…\)；先按公式切分，避免把公式转义成普通字符。
+        out=[]
+        for part in re.split(r"(\\\(.*?\\\)|\$[^$]+\$)",text):
+            if part.startswith(r"\(") and part.endswith(r"\)") and len(part)>4:
+                try:out.append(r"\("+math_tex(part[2:-2])+r"\)");continue
+                except ValueError:pass
+            elif part.startswith("$") and part.endswith("$") and len(part)>2:
+                try:out.append(r"\("+math_tex(part[1:-1])+r"\)");continue
+                except ValueError:pass
+            pieces=re.split(r"(https?://[^\s一-鿿，。；]+)",part)
+            for k,piece in enumerate(pieces):
+                if k%2:
+                    pieces[k]="".join(escape(c)+(r"\allowbreak{}" if c in "/._-?&=" else "") for c in piece)
+                else:
+                    pieces[k]=escape(piece)
+            out.append("".join(pieces))
+        return "".join(out)
     def linked(text):
         def sub(m):
             t=m[0]

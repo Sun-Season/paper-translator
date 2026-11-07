@@ -195,6 +195,8 @@ def audit(source,directory,objects,crops):
             raw = pg.get_text()
             if re.search(r"\\cite(?:p|t)?\s*\{", raw):
                 issue("unrendered_citation", None, f"pdf-{pg.number+1}", "引用命令被印为正文")
+            if re.search(r"\\[()]|\\textbackslash|\\textasciicircum", raw):
+                issue("unrendered_math", None, f"pdf-{pg.number+1}", "成品出现未渲染的 LaTeX 转义")
             text=re.sub(r"\s+","",raw)
             if len(text)<14 and not pg.get_image_info() and not pg.get_drawings():
                 issue("sparse_page",None,f"pdf-{pg.number+1}","页面只有少量文字，无图表")
@@ -345,9 +347,9 @@ def verified_export(directory,source,args):
     logpath.write_text(json.dumps(log,ensure_ascii=False,indent=2))
     refs=source_pages(source)
     draft, math_records = repair_split_math(path.read_text())
-    from paper_translator.source.figure_groups import restore_placeholder_figures, restore_groups, normalize_figure_html, dedupe_figure_blocks
+    from paper_translator.source.figure_groups import restore_placeholder_figures, restore_groups, normalize_figure_html, dedupe_blocks
     draft, repaired_references = repair_reference_continuations(draft, source)
-    draft = dedupe_figure_blocks(draft)
+    draft = dedupe_blocks(draft)
     draft = normalize_figure_html(draft)
     draft, restored_figures = restore_placeholder_figures(draft, source, directory)
     draft = strip_unresolved_images(draft)

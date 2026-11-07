@@ -6,6 +6,19 @@ import pymupdf
 from paper_translator.harness.vision_harness import repair,source_inventory,verified_export
 
 
+class UnrenderedMathTest(unittest.TestCase):
+    def test_literal_tex_in_output_is_flagged(self):
+        from paper_translator.harness.vision_harness import audit
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with pymupdf.open() as doc:
+                doc.new_page().insert_text((40, 60), r"literal \(x\) remains")
+                doc.save(root / "paper.pdf")
+            with pymupdf.open() as source:
+                issues = audit(source, root, [], [])
+        self.assertIn("unrendered_math", [item["code"] for item in issues])
+
+
 class HarnessTest(unittest.TestCase):
     def test_header_requires_a_source_boundary_and_matching_render(self):
         from paper_translator.source.source_header import header_region, draft_header_end, locate_header

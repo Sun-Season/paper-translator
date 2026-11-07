@@ -313,10 +313,11 @@ def translate_markdown(source, destination, args):
                 json.dump(checked,tmp,ensure_ascii=False)
             os.replace(tmp.name,saved)
             out.write(f"<!-- 原稿第 {index+1} 页 -->\n\n{body}\n\n")
-    from paper_translator.source.figure_groups import strip_label_dumps
+    from paper_translator.source.figure_groups import strip_label_dumps, dedupe_blocks
     draft_path=destination/"paper.md"
     cleaned,removed=strip_label_dumps(draft_path.read_text())
-    if removed:draft_path.write_text(cleaned)
+    cleaned=dedupe_blocks(cleaned)
+    if removed or cleaned!=draft_path.read_text():draft_path.write_text(cleaned)
     (destination/"正文语言检查.json").write_text(json.dumps(log,ensure_ascii=False,indent=2))
 
 

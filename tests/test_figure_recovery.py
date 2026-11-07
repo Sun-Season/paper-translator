@@ -4,7 +4,7 @@ from tempfile import TemporaryDirectory
 
 import pymupdf as pdf
 
-from paper_translator.source.figure_groups import figure_box, restore_placeholder_figures, strip_figure_text, ensure_missing_figures, normalize_figure_html, strip_label_dumps
+from paper_translator.source.figure_groups import figure_box, restore_placeholder_figures, strip_figure_text, ensure_missing_figures, normalize_figure_html, strip_label_dumps, dedupe_blocks
 from paper_translator.render.ruled_algorithm import normalize_algorithm_blocks
 from paper_translator.translation.glyphs import strip_pictographs
 
@@ -86,6 +86,15 @@ class FigureHtmlTest(unittest.TestCase):
         fixed = normalize_figure_html(draft)
         self.assertIn("图 5：报警结果。", fixed)
         self.assertNotIn("<figcaption>", fixed)
+        self.assertIn("正文。", fixed)
+
+
+class DedupeTest(unittest.TestCase):
+    def test_repeated_long_paragraph_is_removed(self):
+        paragraph = "这是一段被模型重复输出的长段落。" * 6
+        draft = "<!-- 原稿第 1 页 -->\n\n" + paragraph + "\n\n" + paragraph + "\n\n正文。"
+        fixed = dedupe_blocks(draft)
+        self.assertEqual(fixed.count("这是一段被模型重复输出的长段落。"), 6)
         self.assertIn("正文。", fixed)
 
 
