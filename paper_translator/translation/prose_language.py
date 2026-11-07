@@ -273,6 +273,42 @@ def check_page(text,i,sources,neighbors,args,*,defer_next=False):
     return "\n\n".join(b for b in parts if b),records
 
 
+DISPLAY_MATH = re.compile(r"\$\$.*?\$\$", re.S)
+CAPTION_HEAD = re.compile(r"^(?:Fig(?:ure)?\.?|Table|图|表)\s*\d+\s*[:：]")
+
+
+def split_mixed_blocks(text):
+    """把“图内标签 + 图注 + 正文 + 行间公式”混在一起的段落拆开，便于分别处理。"""
+    out = []
+    for block in paragraphs(text):
+        if "$$" not in block or len(re.findall(r"[A-Za-z]", block)) < 120:
+            out.append(block)
+            continue
+        pieces = []
+        last = 0
+        for match in DISPLAY_MATH.finditer(block):
+            pieces.append(("text", block[last:match.start()]))
+            pieces.append(("math", match.group(0)))
+            last = match.end()
+        pieces.append(("text", block[last:]))
+        for kind, piece in pieces:
+            text = piece.strip()
+            if not text:
+                continue
+            if kind == "math":
+                out.append(text)
+                continue
+            kept = []
+            for sentence in re.split(r"(?<=[.!?])\s+", text):
+                if not kept and len(re.findall(r"\b[A-Za-z][A-Za-z'-]*\b", sentence)) < 8 and not CAPTION_HEAD.match(sentence):
+                    continue
+                kept.append(sentence)
+            cleaned = " ".join(kept).strip()
+            if cleaned:
+                out.append(cleaned)
+    return "\n\n".join(out)
+
+
 def reference_range(sections):
     """参考文献所在页的范围（1 基）：从“参考文献”标题到附录标题之前。"""
     start=next((i+1 for i,text in enumerate(sections)
@@ -297,6 +333,7 @@ def check_draft(path,source,args):
                 continue
             if not deferred and not any(o==i+1 for _,_,o in inspect_page(contexts[i],i,refs)):
                 continue
+            contexts[i]=split_mixed_blocks(contexts[i])
             fixed,records=check_page(contexts[i],i,refs,contexts,args,defer_next=deferred)
             if records:
                 chunks[2*i+2]="\n\n"+fixed.strip()+"\n\n"

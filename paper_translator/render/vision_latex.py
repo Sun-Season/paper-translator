@@ -89,6 +89,22 @@ def duplicate_of_header(text,header):
     return a in b or SequenceMatcher(None,a,b).ratio()>=.9
 
 
+def merge_split_display(markdown):
+    """模型偶尔把一条多行公式拆成相邻两个 $$ 块；带编号时合并为 aligned。"""
+    pattern = re.compile(r"\$\$(.*?)\$\$\s*\$\$(.*?)\$\$", re.S)
+
+    def merge(match):
+        first, second = match.group(1).strip(), match.group(2).strip()
+        tag = re.search(r"\\tag\{(\d+)\}\s*$", first)
+        tail = re.sub(r"\\tag\{\d+\}\s*$", "", first).rstrip() if tag else first
+        if not tag or not re.search(r"(?:\\geq|\\leq|\\ge|\\le|=)\s*$", tail):
+            return match.group(0)
+        body = "\\begin{aligned}\n" + tail + "\n&\\quad " + second + "\n\\end{aligned}"
+        return "$$" + body + " \\tag{" + tag.group(1) + "}$$"
+
+    return pattern.sub(merge, markdown)
+
+
 def protect_emphasis(markdown):
     """转义加粗片段内部的星号，公式里的 * 保持原样。"""
     def escape(match):
@@ -639,7 +655,8 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                 if tag:
                     equation=(dest("eq-"+tag[1])+measure+r"\["+inner+r"\tag{"+tag[1]+r"}\]")
                 else:
-                    equation=(measure+r"\["+inner+r"\]")
+                    # 无编号公式没有原稿框可对照，仍用等比缩小兜底。
+                    equation=r"\par{\centering\fitmath{"+inner+r"}{}\par}"
                 rect=eq_boxes.get((origins[i],tag[1])) if tag else None
                 limit=((widths[origins[i]]-left-right)/2-8) if dual else (widths[origins[i]]-left-right-8)
                 if tag and rect is not None and _width_em(val)*10.95>limit:

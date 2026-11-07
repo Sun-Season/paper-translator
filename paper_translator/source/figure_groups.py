@@ -279,6 +279,7 @@ def normalize_figure_html(markdown):
 def dedupe_blocks(markdown):
     """同一页里重复的图注、图块或长段落只保留第一份（模型偶尔重复输出整页内容）。"""
     chunks = re.split(r"(?m)(^<!-- 原稿第 \d+ 页 -->)", markdown)
+    seen_math = set()
     for index in range(2, len(chunks), 2):
         blocks = chunks[index].strip().split("\n\n")
         seen = set()
@@ -286,6 +287,11 @@ def dedupe_blocks(markdown):
         for block in blocks:
             text = block.strip()
             key = " ".join(text.split())
+            if text.startswith("$$"):
+                math_key = re.sub(r"\s+", "", key)
+                if math_key in seen_math:
+                    continue
+                seen_math.add(math_key)
             special = (text.startswith(("#", "![")) or CAPTION.match(text)
                        or CAPTION_SOURCE.match(text))
             if special or len(key) >= 40:

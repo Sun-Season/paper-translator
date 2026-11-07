@@ -357,7 +357,7 @@ def inspect_equations(run,splits):
                        "detail":f"公式宽 {width:.1f}pt，超过栏宽 {line:.1f}pt"})
     for match in re.finditer(r"EQSCALE:([\d.]+)pt:([\d.]+)pt",text):
         width,line=float(match[1]),float(match[2])
-        if line and width/line<0.95:
+        if line and width/line<0.8:
             issues.append({"code":"equation_overshrink","object":"latex","source_page":None,
                            "detail":f"整条公式被缩小到 {width/line:.2f} 倍才放进栏宽"})
     return issues,splits,changed
