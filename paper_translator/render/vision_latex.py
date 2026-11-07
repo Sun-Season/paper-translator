@@ -636,6 +636,13 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                     equation=r"\begin{figure*}[!tp]"+equation+r"\end{figure*}"
                 body.append(equation)
             elif t:
+                foot=re.match(r"^([¹²³⁴⁵⁶⁷⁸⁹⁰]+)\s*",t)
+                if foot:
+                    number="".join(str("¹²³⁴⁵⁶⁷⁸⁹⁰".index(c)+1) for c in foot[1])
+                    desc=deepcopy(n)
+                    if desc.text:desc.text=desc.text[foot.end():]
+                    body.append(r"\footnotetext["+number+"]{"+inline(desc)+r"}")
+                    continue
                 bib=re.match(r"^\[(\d+)\]\s",t)
                 if bib:body.append(r"\par\noindent\raggedright\hangindent=1.7em "+dest("bib-"+bib[1])+inline(n,False)+r"\par")
                 elif started and n.tag=="p" and re.search(r"[一-鿿]",t) and not t.startswith(("†","‡")):
