@@ -4,7 +4,7 @@ from tempfile import TemporaryDirectory
 
 import pymupdf as pdf
 
-from paper_translator.source.figure_groups import figure_box, restore_placeholder_figures, strip_figure_text, ensure_missing_figures, normalize_figure_html
+from paper_translator.source.figure_groups import figure_box, restore_placeholder_figures, strip_figure_text, ensure_missing_figures, normalize_figure_html, strip_label_dumps
 from paper_translator.render.ruled_algorithm import normalize_algorithm_blocks
 from paper_translator.translation.glyphs import strip_pictographs
 
@@ -87,6 +87,17 @@ class FigureHtmlTest(unittest.TestCase):
         self.assertIn("图 5：报警结果。", fixed)
         self.assertNotIn("<figcaption>", fixed)
         self.assertIn("正文。", fixed)
+
+
+class LabelDumpTest(unittest.TestCase):
+    def test_pipe_label_dump_is_removed_but_formula_kept(self):
+        draft = ("<!-- 原稿第 1 页 -->\n\n正文。\n\n"
+                 "alpha | beta | gamma | delta | one | two | three | four\n\n"
+                 "$$a|b|c|d|e|f|g \\frac{1}{2}$$")
+        fixed, removed = strip_label_dumps(draft)
+        self.assertEqual(len(removed), 1)
+        self.assertNotIn("alpha | beta", fixed)
+        self.assertIn("\\frac{1}{2}", fixed)
 
 
 class MissingObjectTest(unittest.TestCase):

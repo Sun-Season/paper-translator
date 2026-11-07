@@ -134,7 +134,8 @@ def translate_gaps(args,passage):
         {"role":"user","content":masked}]}
     for attempt in range(3):
         answer=request_blocks(args,payload)
-        value=answer[0].get("md","") if len(answer)==1 else ""
+        block=answer[0] if len(answer)==1 else {}
+        value=block.get("md","") if isinstance(block,dict) else (block if isinstance(block,str) else "")
         tokens=Counter(int(k) for k in re.findall(r"<KEEP_(\d+)>",value))
         plain=re.sub(r"<KEEP_\d+>","",value)
         if value and tokens==expected and not re.search(r"\d",plain):

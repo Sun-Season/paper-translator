@@ -351,7 +351,8 @@ def verified_export(directory,source,args):
     draft = normalize_figure_html(draft)
     draft, restored_figures = restore_placeholder_figures(draft, source, directory)
     draft = strip_unresolved_images(draft)
-    from paper_translator.source.figure_groups import strip_figure_text, ensure_missing_figures
+    from paper_translator.source.figure_groups import strip_figure_text, ensure_missing_figures, strip_label_dumps
+    draft, removed_labels = strip_label_dumps(draft)
     draft, removed_figure_text = strip_figure_text(draft, source)
     from paper_translator.render.ruled_algorithm import normalize_algorithm_blocks
     draft = normalize_algorithm_blocks(draft)
@@ -436,6 +437,7 @@ def verified_export(directory,source,args):
         (directory/"参考文献检查.json").write_text(json.dumps(report["references"],ensure_ascii=False,indent=2))
         if restored_figures:report["placeholder_figures"]=restored_figures
         if removed_figure_text:report["figure_text_removed"]=removed_figure_text
+        if removed_labels:report["label_dumps_removed"]=removed_labels
         if ensured_figures:report["ensured_figures"]=ensured_figures
         if repaired_references:report["reference_continuations"]=repaired_references
         if removed_glyphs:report["glyphs_removed"]=removed_glyphs

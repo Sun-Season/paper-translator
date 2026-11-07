@@ -169,6 +169,9 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
     md=re.sub(r"(?m)^<!-- 原稿第 (\d+) 页 -->$",r"\n\nPAPERPAGEBOUNDARY\1\n\n",md)
     md=re.sub(r"(?m)^#+\s+(\d+\.\d+)[ \t]*\n+(?!#)([^\n。！？$]{1,28})$",r"### \1 \2",md)
     md=re.sub(r"(?m)^(A(?:\.\d+)?)\s+([^\n。！？$]{1,55})$",r"### \1 \2",md)
+    # 模型偶尔把行内公式写成双反斜杠（\\(…\\)），先归一化再转换。
+    md=md.replace("\\\\(", "\\(").replace("\\\\)", "\\)")
+    md=md.replace("\\\\[", "\\[").replace("\\\\]", "\\]")
     md=re.sub(r"\\\[(.*?)\\\]",lambda m:"$$"+m[1]+"$$",md,flags=re.S)
     md=re.sub(r"\\\((.*?)\\\)",lambda m:"$"+m[1].strip()+"$",md,flags=re.S)
     md=re.sub(r"\$\$(.*?)\$\$",lambda m:"\n\n$$"+m[1]+"$$\n\n",md,flags=re.S)
@@ -487,7 +490,12 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                         desc.text=CAP.sub("",desc.text,count=1)
                         caption_text=inline(desc)
                     else:
-                        caption_text=linked(cn.text_content()[m.end():])
+                        rest=cn.text_content()[m.end():]
+                        # 图注前缀被加粗时 text 在子节点里，这里按文本重建并保留行内公式。
+                        caption_text="".join(
+                            (r"\("+math_tex(part[2:-2])+r"\)") if part.startswith(r"\(") and part.endswith(r"\)")
+                            else linked(part)
+                            for part in re.split(r"(\\\(.*?\\\))",rest))
                     cap=(dest(cap_id(m))+r"{\raggedright\fontsize{9}{12}\selectfont\noindent\textbf{"
                          +escape(m[0].strip())+r"}\enspace "+caption_text+r"\par}")
                 if n.tag=="figure":

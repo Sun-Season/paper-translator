@@ -294,3 +294,31 @@ def dedupe_figure_blocks(markdown):
         if len(kept) != len(blocks):
             chunks[index] = "\n\n" + "\n\n".join(kept) + "\n\n"
     return "".join(chunks)
+
+
+def strip_label_dumps(markdown):
+    """删除整段转录的图内标签（大量竖线分隔的短标签），图块里已经保留原图。"""
+    chunks = re.split(r"(?m)(^<!-- 原稿第 \d+ 页 -->)", markdown)
+    removed = []
+    for index in range(2, len(chunks), 2):
+        blocks = chunks[index].strip().split("\n\n")
+        kept = []
+        for block in blocks:
+            text = block.strip()
+            body = text
+            if text.startswith("```"):
+                body = re.sub(r"^```[^\n]*\n?", "", text)
+                body = re.sub(r"\n?```$", "", body).strip()
+            pipes = body.count("|")
+            cjk = len(re.findall(r"[\u4e00-\u9fff]", body))
+            words = re.findall(r"[A-Za-z]{2,}", body)
+            is_table = bool(re.search(r"(?m)^\|.*\|$", body)) or "---" in body
+            is_math = bool(re.search(r"[\\$]", body)) or body.startswith("$$")
+            if (pipes >= 5 and not is_table and not is_math and cjk == 0 and len(words) >= 8
+                    and len(body) < 1200 and not re.search(r"[。！？]", body)):
+                removed.append({"page": index // 2, "text": body[:60]})
+                continue
+            kept.append(block)
+        if len(kept) != len(blocks):
+            chunks[index] = "\n\n" + "\n\n".join(kept) + "\n\n"
+    return "".join(chunks), removed
