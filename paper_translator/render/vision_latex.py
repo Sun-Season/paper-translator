@@ -160,6 +160,27 @@ def number_headings(markdown, prefixes):
     return "\n".join(lines)
 
 
+def _strip_asset_images(asset):
+    """裁片 PDF 只保留矢量内容；被裁在区域外的整页图片换成 1x1 占位，避免把原页图片全部嵌入。"""
+    page=asset[0]
+    placeholder=None
+    entries=[]
+    for xref,name,invoker,bbox in page.get_xobjects():
+        subtype=asset.xref_get_key(xref,"Subtype")[1]
+        if subtype=="/Image":
+            if placeholder is None:
+                placeholder=asset.get_new_xref()
+                asset.update_object(placeholder,"<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 >>")
+                asset.update_stream(placeholder,b"\xff")
+            entries.append((name,placeholder))
+        else:
+            entries.append((name,xref))
+    if placeholder is None:
+        return
+    body=" ".join(f"/{name} {xref} 0 R" for name,xref in entries)
+    asset.xref_set_key(page.xref,"Resources/XObject",f"<< {body} >>")
+
+
 def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,crop_boxes=None,equation_splits=None):
     from paper_translator.translation.vision_pdf import source_links
     directory=Path(directory)
@@ -381,6 +402,7 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                     with pymupdf.open() as asset:
                         page = asset.new_page(width=box.width, height=box.height)
                         page.show_pdf_page(page.rect, original, 0, clip=box)
+                        _strip_asset_images(asset)
                         asset.save(work/"source-header.pdf")
                     body.append(r"\par\noindent\hspace*{"+f"{max(0,box.x0-left):.3f}bp"+
                                 r"}\includegraphics[width="+f"{header_width:.3f}bp"+r"]{source-header.pdf}\par")
@@ -692,12 +714,10 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                 limit=((widths[origins[i]]-left-right)/2-8) if dual else (widths[origins[i]]-left-right-8)
                 if tag and rect is not None and _width_em(val)*10.95>limit:
                     # 排不进栏宽时保留原稿公式（矢量、原始换行/对齐和编号），不缩小字号。
-                    asset_name="eq-"+tag[1]+"-original.pdf"
-                    with pymupdf.open(source) as original, pymupdf.open() as asset:
-                        page=original[origins[i]]
-                        target=asset.new_page(width=rect.width,height=rect.height)
-                        target.show_pdf_page(target.rect,original,page.number,clip=rect)
-                        asset.save(work/asset_name)
+                    asset_name="eq-"+tag[1]+"-original.png"
+                    with pymupdf.open(source) as original:
+                        pix=original[origins[i]].get_pixmap(dpi=400,clip=rect,alpha=False)
+                        pix.save(work/asset_name)
                     (directory/"figures").mkdir(exist_ok=True)
                     shutil.copyfile(work/asset_name,directory/"figures"/asset_name)
                     wide=dual and spans_gutter(rect,widths[origins[i]])
