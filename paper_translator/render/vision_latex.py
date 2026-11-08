@@ -667,7 +667,7 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                 val=math_tex(n[0].text_content()[2:-2])
                 from paper_translator.render.equation_split import _width_em
                 tag=(re.search(r"\\tag\{(\d+)\}",val)
-                     or re.search(r"\\quad\s*\((\d+)\)\s*$",val))
+                     or re.search(r"\\(?:quad|qquad)\s*\((\d+)\)\s*$",val))
                 if tag:
                     val=val[:tag.start()]+val[tag.end():]
                 if r"\\" in val and r"\begin" not in val: val=r"\begin{gathered}"+val+r"\end{gathered}"

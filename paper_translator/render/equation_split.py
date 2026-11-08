@@ -53,12 +53,17 @@ def _break_points(latex):
             elif token == "\\end":
                 environments = max(0, environments - 1)
             elif (depth == 0 and left == 0 and environments == 0
-                  and token in RELATIONS | BINARY):
-                points.append((index, index + len(token), "op"))
+                  and token in RELATIONS):
+                points.append((index, index + len(token), "rel"))
+            elif (depth == 0 and left == 0 and environments == 0
+                  and token in BINARY):
+                points.append((index, index + len(token), "bin"))
             index += len(token)
             continue
-        elif depth == 0 and left == 0 and environments == 0 and (char in "=<>" or char in "+-"):
-            points.append((index, index + 1, "op"))
+        elif depth == 0 and left == 0 and environments == 0 and char in "=<>":
+            points.append((index, index + 1, "rel"))
+        elif depth == 0 and left == 0 and environments == 0 and char in "+-":
+            points.append((index, index + 1, "bin"))
         elif depth == 0 and left == 0 and environments == 0 and char == ",":
             points.append((index, index + 1, "punct"))
         index += 1
@@ -97,20 +102,26 @@ def _split_candidate(latex, width_em):
             continue
         fitted = None
         # 优先在关系符/加减号处换行，逗号只作兜底，避免在括号内条件中途折行。
-        for wanted in ("op", "punct"):
+        for wanted in ("rel", "bin", "punct"):
             for back in range(index - 1, -1, -1):
                 if points[back][1] <= start:
                     break
                 if points[back][2] != wanted:
                     continue
                 if _width_em(latex[start:points[back][1]]) <= width_em:
-                    fitted = points[back][1]
+                    fitted = back
                     break
-            if fitted:
+            if fitted is not None:
                 break
-        if fitted and fitted > start:
-            lines.append(latex[start:fitted].strip())
-            start = fitted
+        if fitted is not None:
+            fbegin, fend, fkind = points[fitted]
+            if fkind == "bin":
+                # 加减号放在续行行首，符合常见排版习惯。
+                lines.append(latex[start:fbegin].strip())
+                start = fbegin
+            else:
+                lines.append(latex[start:fend].strip())
+                start = fend
             continue
         lines.append(latex[start:end].strip())
         start = end
