@@ -29,7 +29,7 @@ def _width_em(latex):
 
 
 def _break_points(latex):
-    """只在花括号、\left/\right 和环境之外记录可断点。"""
+    r"""只在花括号、\left/\right 和环境之外记录可断点。"""
     depth = 0
     left = 0
     environments = 0
@@ -54,17 +54,33 @@ def _break_points(latex):
                 environments = max(0, environments - 1)
             elif (depth == 0 and left == 0 and environments == 0
                   and token in RELATIONS | BINARY):
-                points.append((index, index + len(token)))
+                points.append((index, index + len(token), "op"))
             index += len(token)
             continue
-        elif depth == 0 and left == 0 and environments == 0 and (char in "=<>" or char in "+-,"):
-            points.append((index, index + 1))
+        elif depth == 0 and left == 0 and environments == 0 and (char in "=<>" or char in "+-"):
+            points.append((index, index + 1, "op"))
+        elif depth == 0 and left == 0 and environments == 0 and char == ",":
+            points.append((index, index + 1, "punct"))
         index += 1
     return points
 
 
 def split_equation(latex, width_em=22.0):
     """在关系符、加减号或逗号处换行；返回 aligned 环境，内容不增不减。"""
+    for candidate in (latex, _relax_delimiters(latex)):
+        result = _split_candidate(candidate, width_em)
+        if result:
+            return result
+    wrapped = re.search(r"\\begin\{(?:aligned|alignedat|gathered)\}(.*?)\\end\{(?:aligned|alignedat|gathered)\}", latex, re.S)
+    if wrapped:
+        rows = [row.replace("&", "") for row in re.split(r"\\\\", wrapped.group(1)) if row.strip()]
+        result = _split_candidate(" \\\\ ".join(rows), width_em)
+        if result:
+            return result
+    return None
+
+
+def _split_candidate(latex, width_em):
     points = _break_points(latex)
     if not points:
         return None
@@ -72,7 +88,7 @@ def split_equation(latex, width_em=22.0):
     start = 0
     index = 0
     while index < len(points):
-        begin, end = points[index]
+        begin, end, kind = points[index]
         if end <= start:
             index += 1
             continue
@@ -80,11 +96,17 @@ def split_equation(latex, width_em=22.0):
             index += 1
             continue
         fitted = None
-        for back in range(index - 1, -1, -1):
-            if points[back][1] <= start:
-                break
-            if _width_em(latex[start:points[back][1]]) <= width_em:
-                fitted = points[back][1]
+        # 优先在关系符/加减号处换行，逗号只作兜底，避免在括号内条件中途折行。
+        for wanted in ("op", "punct"):
+            for back in range(index - 1, -1, -1):
+                if points[back][1] <= start:
+                    break
+                if points[back][2] != wanted:
+                    continue
+                if _width_em(latex[start:points[back][1]]) <= width_em:
+                    fitted = points[back][1]
+                    break
+            if fitted:
                 break
         if fitted and fitted > start:
             lines.append(latex[start:fitted].strip())
@@ -102,7 +124,17 @@ def split_equation(latex, width_em=22.0):
     return "\\begin{aligned}\n" + body + "\n\\end{aligned}"
 
 
+DELIMITER_SIZE = re.compile(r"\\(?:left|right|bigl|bigr|Bigl|Bigr|biggl|biggr|Biggl|Biggr|big|Big|bigg|Bigg)(?=[\[\](){}|.\\])")
+
+
 def tokens(latex):
-    """用于校验拆分没有丢失或改变符号。"""
+    """用于校验拆分没有丢失或改变符号；括号大小命令不计入符号。"""
     value = re.sub(r"\\begin\{aligned\}|\\end\{aligned\}|&|\\\\|\\quad", " ", latex)
+    value = DELIMITER_SIZE.sub(" ", value)
     return sorted(re.findall(r"\\[A-Za-z]+|\\[^A-Za-z]|[^\s\\{}]+", value))
+
+
+def _relax_delimiters(latex):
+    r"""把 \left/\right 换成固定大小括号，使长公式可以在括号内换行。"""
+    return re.sub(r"\\(left|right)(?=[\[\](){}|.\\])",
+                  lambda m: "\\big" + ("l" if m.group(1) == "left" else "r"), latex)

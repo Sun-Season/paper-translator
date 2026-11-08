@@ -669,8 +669,11 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                 if tag:
                     equation=(dest("eq-"+tag[1])+measure+r"\["+inner+r"\tag{"+tag[1]+r"}\]")
                 else:
-                    # 无编号公式没有原稿框可对照，仍用等比缩小兜底。
-                    equation=r"\par{\centering\fitmath{"+inner+r"}{}\par}"
+                    # 无编号公式先尝试分行；仍超宽时按实测宽度等比缩小兜底。
+                    equation=(measure+r"\ifdim\wd\eqbox>\linewidth"
+                              r"\typeout{EQSCALE:\the\wd\eqbox:\the\linewidth}"
+                              r"\par{\centering\resizebox{\linewidth}{!}{\usebox\eqbox}\par}"
+                              r"\else\par{\centering\usebox\eqbox\par}\fi")
                 rect=eq_boxes.get((origins[i],tag[1])) if tag else None
                 limit=((widths[origins[i]]-left-right)/2-8) if dual else (widths[origins[i]]-left-right-8)
                 if tag and rect is not None and _width_em(val)*10.95>limit:

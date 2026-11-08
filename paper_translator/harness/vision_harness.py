@@ -358,8 +358,9 @@ def repair_reference_continuations(draft,source):
     return "".join(chunks),repaired
 
 
-def inspect_equations(run,splits):
+def inspect_equations(run,splits,rounds=None):
     """读取本次编译记录：过宽公式安排拆行，最终仍过宽或缩得过小则报告。"""
+    rounds=rounds if rounds is not None else {}
     from paper_translator.render.equation_split import split_equation
     log=run/"latex"/"paper.log"
     page=run/"equations.json"
@@ -371,15 +372,28 @@ def inspect_equations(run,splits):
     for match in re.finditer(r"EQWIDTH:([^\s:]+):([\d.]+)pt:([\d.]+)pt",text):
         key,width,line=match[1],float(match[2]),float(match[3])
         if width<=line+0.5:continue
+        from paper_translator.render.equation_split import tokens, _width_em
+        source=equations.get(key,"")
+        estimate=_width_em(source)
+        # 用 LaTeX 实测宽度校准字符估宽：估宽与实测成比例，先按比例定分行目标。
+        scale=(estimate/width) if width and estimate else 1.0
+        target=max(4.0,0.85*line*scale)
         if key not in splits:
-            from paper_translator.render.equation_split import tokens
-            candidate=split_equation(equations.get(key,""),width_em=max(8.0,(line-8)/10.95/1.5))
+            candidate=split_equation(source,width_em=target)
             if candidate:
-                if tokens(equations.get(key,""))!=tokens(candidate):
+                if tokens(source)!=tokens(candidate):
                     issues.append({"code":"equation_structure_changed","object":"eq-"+key,"source_page":None,
                                    "detail":"自动分行改变了公式符号，已放弃该分行"})
                 else:
-                    splits[key]=candidate;changed=True;continue
+                    splits[key]=candidate;rounds[key]=1;changed=True;continue
+        elif rounds.get(key,1)<4:
+            # 第一次分行仍超宽：收紧目标再分一次。
+            candidate=split_equation(source,width_em=max(4.0,target*0.55))
+            if candidate and tokens(source)==tokens(candidate):
+                splits[key]=candidate;rounds[key]=rounds.get(key,1)+1;changed=True;continue
+        if key.startswith("u"):
+            # 无编号公式在渲染时按实测宽度缩小兜底；过度缩小由 EQSCALE 检查阻断。
+            continue
         issues.append({"code":"equation_overflow","object":"eq-"+key,"source_page":None,
                        "detail":f"公式宽 {width:.1f}pt，超过栏宽 {line:.1f}pt"})
     for match in re.finditer(r"EQSCALE:([\d.]+)pt:([\d.]+)pt",text):
@@ -434,7 +448,8 @@ def verified_export(directory,source,args):
         best=None
         previous=None
         equation_splits={}
-        for count in range(3):
+        split_rounds={}
+        for count in range(4):
             run=Path(temp)/str(count)
             run.mkdir()
             (run/"paper.md").write_text(draft)
@@ -447,7 +462,7 @@ def verified_export(directory,source,args):
                                     crop_boxes={c["path"]:pdf.Rect(c["box"]) for c in crops if "box" in c},
                                     equation_splits=equation_splits)
                 issues=audit(original,run,objects,crops)
-                equation_issues,equation_splits,splits_changed=inspect_equations(run,equation_splits)
+                equation_issues,equation_splits,splits_changed=inspect_equations(run,equation_splits,split_rounds)
                 issues.extend(equation_issues)
                 for record in math_records:
                     if record["before"] == record["after"]:
@@ -481,7 +496,7 @@ def verified_export(directory,source,args):
                 break
             entry={"attempt":count+1,"issues":issues}
             report["attempts"].append(entry)
-            if splits_changed and count<2:
+            if splits_changed and count<3:
                 best=run
                 report.update(selected_attempt=count+1,status="needs_review",remaining=issues)
                 previous=None
@@ -492,7 +507,7 @@ def verified_export(directory,source,args):
             best=run
             report.update(selected_attempt=count+1,status="needs_review" if issues else "passed",remaining=issues)
             previous=keys
-            if not issues or count==2:break
+            if not issues or count==3:break
             draft,actions=repair((run/"paper.md").read_text(),issues,objects,original_draft)
             if not actions:break
             entry["repairs"]=actions
