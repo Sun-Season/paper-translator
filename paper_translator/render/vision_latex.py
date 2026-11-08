@@ -119,6 +119,69 @@ def merge_split_display(markdown):
     return pattern.sub(merge, markdown)
 
 
+
+GREEK = {"α":"\\alpha","β":"\\beta","γ":"\\gamma","δ":"\\delta","ε":"\\epsilon",
+         "ζ":"\\zeta","η":"\\eta","θ":"\\theta","ι":"\\iota","κ":"\\kappa","λ":"\\lambda",
+         "μ":"\\mu","ν":"\\nu","ξ":"\\xi","π":"\\pi","ρ":"\\rho","σ":"\\sigma","τ":"\\tau",
+         "υ":"\\upsilon","φ":"\\phi","χ":"\\chi","ψ":"\\psi","ω":"\\omega",
+         "Γ":"\\Gamma","Δ":"\\Delta","Θ":"\\Theta","Λ":"\\Lambda","Ξ":"\\Xi","Π":"\\Pi",
+         "Σ":"\\Sigma","Υ":"\\Upsilon","Φ":"\\Phi","Ψ":"\\Psi","Ω":"\\Omega"}
+MATH_SYMBOLS = {"∼":"\\sim","~":"\\sim","‖":"\\|","∝":"\\propto","≥":"\\geq","≤":"\\leq",
+                "−":"-","×":"\\times","·":"\\cdot","→":"\\rightarrow","∞":"\\infty",
+                "∈":"\\in","∑":"\\sum","∫":"\\int","∂":"\\partial","∇":"\\nabla",
+                "≈":"\\approx","≠":"\\neq","±":"\\pm","̂":"","̃":""}
+FUNCTION_WORDS = ("max","min","log","ln","exp","sin","cos","tan","arg","det","lim")
+PLAIN_MATH_RUN = re.compile(r"[0-9A-Za-z\u0370-\u03ff\u0300-\u036f\u2200-\u22ff\u2190-\u21ff"
+                            r"\u00b7\u2212\u2013\u2014()\[\]{}_^=+\-<>|/.,:;~∝‖' ]{3,200}")
+MATH_NEED = re.compile(r"(?:[_^](?:\{|[0-9A-Za-z\u0370-\u03ff]))|\\")
+
+
+def _plain_math_body(text):
+    def greek(match):
+        char = match.group(0)
+        command = GREEK.get(char, char)
+        following = match.string[match.end():match.end()+1]
+        return command + (" " if following and re.match(r"[A-Za-z0-9\u0370-\u03ff]", following) else "")
+
+    # 带帽/波浪的重音字符先处理成 \hat{...}。
+    text = re.sub(r"([\u0370-\u03ff])[\u0302]", lambda m: "\\hat{" + GREEK.get(m.group(1), m.group(1)) + "}", text)
+    text = re.sub(r"([\u0370-\u03ff])[\u0303]", lambda m: "\\tilde{" + GREEK.get(m.group(1), m.group(1)) + "}", text)
+    for source, target in (("Â","\\hat{A}"), ("Ê","\\hat{E}"), ("Î","\\hat{I}")):
+        text = text.replace(source, target)
+    text = re.sub(r"[\u0370-\u03ff]", greek, text)
+    for word in FUNCTION_WORDS:
+        text = re.sub(r"(?<![A-Za-z\\])(?:%s)(?=[_^ (])" % word, "\\\\" + word, text)
+    # 连续两层上下标（rho_π_ref）要嵌套，否则 LaTeX 报 Double subscript。
+    text = re.sub(r"_(\\[A-Za-z]+)_([A-Za-z0-9]+)", lambda m: "_{"+m.group(1)+"_{"+m.group(2)+"}}", text)
+    text = re.sub(r"\^(\\[A-Za-z]+)\^([A-Za-z0-9]+)", lambda m: "^{"+m.group(1)+"^{"+m.group(2)+"}}", text)
+    # ^ 后接希腊字母再接下标的组合需要嵌套，再给普通上下标补大括号。
+    text = re.sub(r"(\^)([\u0370-\u03ff])(_[A-Za-z0-9\u0370-\u03ff{]+}?)",
+                  lambda m: m.group(1) + "{" + m.group(2) + m.group(3) + "}", text)
+    text = re.sub(r"([_^])([A-Za-z0-9\u0370-\u03ff]{2,})", r"\1{\2}", text)
+    for source, target in MATH_SYMBOLS.items():
+        text = text.replace(source, target)
+    return text
+
+
+def wrap_plain_math(markdown):
+    """把模型直接写成普通文本的公式（π_ref、E_{...}、γ^t 等）包成行内公式。"""
+    parts = re.split(r"(\$\$.*?\$\$|\$[^$\n]*\$)", markdown, flags=re.S)
+    for index in range(0, len(parts), 2):
+        text = parts[index]
+
+        def wrap(match):
+            run = re.sub(r"\s*\[\d+(?:\s*[–,-]\s*\d+)?\]\s*$", "", match.group(0))
+            if not MATH_NEED.search(run or ""):
+                return match.group(0)
+            body = _plain_math_body(run.strip())
+            if sum(1 if c == "{" else -1 if c == "}" else 0 for c in body) != 0:
+                return run
+            return "$" + body + "$"
+
+        parts[index] = PLAIN_MATH_RUN.sub(wrap, text)
+    return "".join(parts)
+
+
 def protect_emphasis(markdown):
     """转义加粗片段内部的星号，公式里的 * 保持原样。"""
     def escape(match):
@@ -234,6 +297,8 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
     md=re.sub(r"\\hfill\s+Eq\.\s*\((\d+)\)",r"　式（\1）",md)
     md=md.replace("<br>"," / ").replace("<br/>"," / ")
     md=re.sub(r"(?m)^(参考文献|References)\s*$",r"## \1",md)
+    md=merge_split_display(md)
+    md=wrap_plain_math(md)
     md=protect_emphasis(md)
     if source:
         md=number_headings(md,source_heading_prefixes(source))
