@@ -227,7 +227,8 @@ def _translate_caption(args, text):
         {"role": "system", "content": "Translate this figure caption into Chinese. Keep the figure number, panel labels, numbers, citations and LaTeX commands. Return JSON with blocks containing one md string."},
         {"role": "user", "content": text}]}
     blocks = request_blocks(args, payload)
-    value = blocks[0].get("md", "").strip() if blocks else ""
+    first = blocks[0] if blocks else {}
+    value = (first.get("md", "") if isinstance(first, dict) else first if isinstance(first, str) else "").strip()
     return value or text
 
 

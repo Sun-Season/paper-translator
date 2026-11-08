@@ -92,6 +92,13 @@ def raster_inventory(doc,directory,draft,objects):
                 gap=cap.y0-box.y1
                 if -18<=gap<75 and min(cap.x1,box.x1)>max(cap.x0,box.x0):
                     options.append((abs(gap),crop["path"],crop))
+            if not options:
+                # 图注可能在图上方或与图的间距较大；退化为取最近且横向重叠的裁片。
+                for crop in crops:
+                    if crop["page"]!=i+1 or "box" not in crop or crop.get("prose_crop"):continue
+                    box=pdf.Rect(crop["box"])
+                    if min(cap.x1,box.x1)>max(cap.x0,box.x0) and abs(cap.y0-box.y1)<160:
+                        options.append((abs(cap.y0-box.y1),crop["path"],crop))
             if options:
                 c=min(options)[2]
                 obj.update(asset=c["path"],digest=c["digest"])

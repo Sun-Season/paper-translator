@@ -37,6 +37,10 @@ def math_tex(value):
     for source,target in ALIGN_ENVIRONMENTS.items():
         value=value.replace(r"\begin{"+source+r"}",r"\begin{"+target+r"}")
         value=value.replace(r"\end{"+source+r"}",r"\end{"+target+r"}")
+    if "\\\\" in value and "\\left" in value:
+        # 多行公式里跨行保留 \left...\right 会破坏配对，改用固定大小括号。
+        from paper_translator.render.equation_split import _relax_delimiters
+        value=_relax_delimiters(value)
     if re.search(r"(?<!\\)[%#$]|\x00|\^\^|\\(?:begin|end)\s*\{(?!aligned\}|alignedat\}|gathered\}|matrix\}|pmatrix\}|bmatrix\}|vmatrix\}|Vmatrix\}|cases\}|array\}|smallmatrix\}|split\})",value):
         raise ValueError("公式含不支持的 TeX 语法。")
     if set(re.findall(r"\\([A-Za-z]+)",value))-SAFE_MATH:
@@ -477,8 +481,18 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                     width=source_tables[filename][1].width
                     wide=spans_gutter(source_tables[filename][1],widths[source_tables[filename][0]])
                 else:
-                    path=(directory/img.get("src","")).resolve()
-                    if path.parent!=(directory/"figures").resolve() or not path.is_file():raise ValueError("图块路径无效。")
+                    raw=img.get("src","")
+                    path=(directory/raw).resolve()
+                    if path.parent!=(directory/"figures").resolve() or not path.is_file():
+                        candidate=(directory/"figures"/Path(raw).name).resolve()
+                        if candidate.is_file():
+                            path=candidate
+                        else:
+                            record=directory/"图块缺失.json"
+                            existing=json.loads(record.read_text()) if record.is_file() else []
+                            existing.append({"src":raw,"page":origins[i]+1})
+                            record.write_text(json.dumps(existing,ensure_ascii=False,indent=2))
+                            continue
                     with Image.open(path) as im:
                         wide=im.width/im.height>1.15
                         match=re.fullmatch(r"page-(\d+)-\d+\.png",path.name)
