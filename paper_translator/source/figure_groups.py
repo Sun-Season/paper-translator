@@ -245,8 +245,12 @@ def source_captions(page):
 
 def _translate_caption(args, text):
     from paper_translator.cli import request_blocks
+    from paper_translator.config.prose_policy import chinese_prose_policy
     payload = {"model": args.model, "messages": [
-        {"role": "system", "content": "Translate this figure caption into Chinese. Keep the figure number, panel labels, numbers, citations and LaTeX commands. Return JSON with blocks containing one md string."},
+        {"role": "system", "content":
+            f"Translate this figure caption into {args.target}. Keep the figure number, panel labels, "
+            "numbers, citations and LaTeX commands. Return JSON with blocks containing one md string."
+            + chinese_prose_policy(args.target)},
         {"role": "user", "content": text}]}
     blocks = request_blocks(args, payload)
     first = blocks[0] if blocks else {}

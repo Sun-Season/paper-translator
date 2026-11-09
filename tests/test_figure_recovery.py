@@ -144,6 +144,22 @@ class MissingObjectTest(unittest.TestCase):
             self.assertEqual(added, [])
             self.assertEqual(fixed, draft)
 
+    def test_caption_translation_follows_chinese_prose_policy(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from paper_translator.config.prose_policy import CHINESE_PROSE_POLICY
+        from paper_translator.source.figure_groups import _translate_caption
+        seen = {}
+        def fake(args, payload):
+            seen.update(payload)
+            return [{"md": "图 2：翻译后的图注。"}]
+        args = SimpleNamespace(model='mock', target='zh', base_url='https://example.com')
+        with patch('paper_translator.cli.request_blocks', side_effect=fake):
+            value = _translate_caption(args, "Figure 2: A test figure caption.")
+        self.assertEqual(value, "图 2：翻译后的图注。")
+        self.assertIn(CHINESE_PROSE_POLICY, seen["messages"][0]["content"])
+
     def test_algorithm_steps_become_separate_paragraphs(self):
         draft = ("<!-- 原稿第 1 页 -->\n\n**算法 1** 测试\n\n1: 第一步\n2: 第二步\n3: 第三步\n")
         fixed = normalize_algorithm_blocks(draft)
