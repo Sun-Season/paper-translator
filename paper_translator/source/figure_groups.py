@@ -81,17 +81,39 @@ def figure_box(page, number):
     if head is not None and target.y0 > head.y1:
         boundary = max(boundary, head.y1 + 2)
     overlap = lambda box: box[2] > target.x0 and box[0] < target.x1
+    page_area = page.rect.width * page.rect.height
+    # 图片/矢量块允许与图注行有少量纵向重叠（常见于图片带透明或白边），
+    # 只要它从图注上方开始并与图注横向重叠，就纳入图块范围。
     tiles = [pymupdf.Rect(item["bbox"]) for item in page.get_image_info()
-             if boundary <= item["bbox"][1] and item["bbox"][3] <= target.y0 + 1
-             and overlap(item["bbox"])]
+             if item["bbox"][3] > boundary and item["bbox"][1] < target.y0 - 2
+             and overlap(item["bbox"])
+             and (pymupdf.Rect(item["bbox"]).get_area() < page_area * .8)]
     tiles += [item["rect"] for item in page.get_drawings()
-              if boundary <= item["rect"].y0 and item["rect"].y1 <= target.y0 + 1
+              if item["rect"].y1 > boundary and item["rect"].y0 < target.y0 - 2
               and overlap(item["rect"]) and item["rect"].width > 2 and item["rect"].height > 2]
     if not tiles:
         return None
     top = min(rect.y0 for rect in tiles) - 2
     left = min(rect.x0 for rect in tiles)
     right = max(rect.x1 for rect in tiles)
+    # 位图/矢量块顶部可能压住题头下的单位、网址等前置文字：把这些短文字行
+    # 从图块顶部排除，避免裁片把 "UC Berkeley / https://…" 一起裁进去。
+    top_guess = top + 60
+    for block in page.get_text("dict", flags=pymupdf.TEXTFLAGS_TEXT)["blocks"]:
+        for line in block.get("lines", []):
+            rect = pymupdf.Rect(line["bbox"])
+            if rect.x1 <= left or rect.x0 >= right:
+                continue
+            if rect.y0 < boundary or rect.y1 > top_guess:
+                continue
+            text = "".join(span["text"] for span in line["spans"]).strip()
+            if not text or len(text) > 60:
+                continue
+            words = text.replace("https://", " ").replace("http://", " ").split()
+            affiliation = ("https://" in text or "http://" in text or "www." in text
+                           or (len(words) >= 2 and all(w[:1].isupper() for w in words if w)))
+            if affiliation:
+                top = max(top, rect.y1 + 1)
     return pymupdf.Rect(left, top, right, target.y0 - 2) & page.rect
 
 

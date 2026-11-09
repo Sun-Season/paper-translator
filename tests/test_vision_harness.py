@@ -129,3 +129,36 @@ class HarnessTest(unittest.TestCase):
         fixed, actions = repair(draft, issues, [], draft)
         self.assertIn("\u2603", fixed)
         self.assertEqual(actions, [])
+
+
+class FigureCropOverlapTest(unittest.TestCase):
+    def test_image_overlapping_caption_is_included(self):
+        import pymupdf as pymupdf_mod
+        from paper_translator.source.figure_groups import figure_box
+        with pymupdf_mod.open() as doc:
+            page = doc.new_page(width=612, height=792)
+            page.insert_text((108, 330), "Figure 1: A test figure.", fontsize=10)
+            pix = pymupdf_mod.Pixmap(pymupdf_mod.csRGB, pymupdf_mod.IRect(0, 0, 40, 40), False)
+            pix.clear_with(120)
+            page.insert_image(pymupdf_mod.Rect(86, 150, 395, 329), pixmap=pix)
+            box = figure_box(page, "1")
+        self.assertIsNotNone(box)
+        self.assertLessEqual(box.x0, 87)
+        self.assertLessEqual(box.y0, 152)
+        self.assertGreaterEqual(box.y1, 317)
+
+
+class FootnoteSegmentTest(unittest.TestCase):
+    def test_symbol_and_math_markers(self):
+        from paper_translator.render.vision_latex import footnote_segments
+        self.assertEqual(footnote_segments(r"\(^{*}\)Equal contribution."),
+                         [(1, "Equal contribution.")])
+        self.assertEqual(footnote_segments(r"\(^{\dagger}\)Equal advising."),
+                         [(2, "Equal advising.")])
+        self.assertEqual(footnote_segments("†注。"), [(2, "注。")])
+        self.assertEqual(footnote_segments("普通段落。"), [])
+
+    def test_split_multiple_markers(self):
+        from paper_translator.render.vision_latex import footnote_segments
+        self.assertEqual(footnote_segments(r"\(^{*}\)A。\(^{\dagger}\)B。"),
+                         [(1, "A。"), (2, "B。")])

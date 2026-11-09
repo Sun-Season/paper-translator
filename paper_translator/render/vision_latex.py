@@ -250,6 +250,39 @@ def _strip_asset_images(asset):
     asset.xref_set_key(page.xref,"Resources/XObject",f"<< {body} >>")
 
 
+FOOTNOTE_MARK = re.compile(r"\\\((?:[^)]*?)\\\)|[*†‡]|[\u00b9\u00b2\u00b3\u2074-\u2079\u2070]")
+FOOTNOTE_SYMBOLS = {"*": 1, "†": 2, "‡": 3}
+SUPERSCRIPT_DIGITS = "¹²³⁴⁵⁶⁷⁸⁹⁰"
+
+
+def footnote_segments(text):
+    """把以脚注标记开头的段落拆成 [(编号, 去标记文本)]。"""
+    marks = list(FOOTNOTE_MARK.finditer(text))
+    if not marks or marks[0].start() != 0:
+        return []
+    segments = []
+    for index, match in enumerate(marks):
+        end = marks[index + 1].start() if index + 1 < len(marks) else len(text)
+        token = match.group(0)
+        number = None
+        if token.startswith("\\("):
+            inner = token[2:-2].strip().strip("{}^_ ")
+            inner = (inner.replace("\\ast", "*").replace("\\dagger", "†")
+                     .replace("\\ddagger", "‡").replace("\\", "")).strip("{}^_ ")
+            if inner in FOOTNOTE_SYMBOLS:
+                number = FOOTNOTE_SYMBOLS[inner]
+            elif inner and inner[0] in SUPERSCRIPT_DIGITS:
+                number = "".join(str(SUPERSCRIPT_DIGITS.index(c) + 1) for c in inner)
+        elif token in FOOTNOTE_SYMBOLS:
+            number = FOOTNOTE_SYMBOLS[token]
+        else:
+            number = "".join(str(SUPERSCRIPT_DIGITS.index(c) + 1) for c in token)
+        value = text[match.end():end].strip()
+        if number is not None and value:
+            segments.append((number, value))
+    return segments
+
+
 def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,crop_boxes=None,equation_splits=None):
     from paper_translator.translation.vision_pdf import source_links
     directory=Path(directory)
@@ -475,6 +508,33 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
         if source:
             with pymupdf.open(source) as original:
                 box = header_region(original[0])
+                if box is not None:
+                    # 题头区域常只框住标题和作者；把紧接其后的单位、网址等前置
+                    # 短行并入题头。只接受与题头相接的行，并在第一行不匹配时停止，
+                    # 避免把图内标签或图形一起裁进题头。
+                    lines = []
+                    for block in original[0].get_text("dict", flags=pymupdf.TEXTFLAGS_TEXT)["blocks"]:
+                        for line in block.get("lines", []):
+                            rect = pymupdf.Rect(line["bbox"])
+                            text = "".join(span["text"] for span in line["spans"]).strip()
+                            if text:
+                                lines.append((rect, text))
+                    lines.sort(key=lambda item: item[0].y0)
+                    end = box.y1
+                    for rect, text in lines:
+                        if rect.y0 < end - 2:
+                            continue
+                        if rect.y0 - end > 12:
+                            break
+                        if rect.y1 > box.y1 + 90:
+                            break
+                        words = text.replace("https://", " ").replace("http://", " ").split()
+                        front = ("https://" in text or "http://" in text or "www." in text
+                                 or (len(words) >= 2 and all(w[:1].isupper() for w in words if w)))
+                        if not front or len(text) > 120:
+                            break
+                        end = rect.y1
+                    box = pymupdf.Rect(box.x0, box.y0, box.x1, end)
                 header_text=""
                 if box and header_end:
                     with pymupdf.open(source) as original_text:
@@ -554,12 +614,53 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
         front_end = next((k for k,n in enumerate(nodes) if origins[k]==0 and n.tag in ("h1","h2","h3") and re.match(r"^(?:(?:1|I)[.、．]?\s|引言|绪论|Introduction)", n.text_content().strip(), re.I)), 0)
         if layout["document"]["preserve_front_order"] and front_end:
             order = list(range(front_end)) + [k for k in order if k >= front_end]
+        # 首页题头后的脚注：带 *、†、‡、上标数字标记的段落，以及紧邻它们的
+        # 短说明段（会议、单位等），单独放到页底，不再作为正文流动。
+        footnotes={}
+        note_counter=1
+        for i,n in enumerate(nodes):
+            if n.tag!="p":continue
+            if header_end and i<header_end:continue
+            segments=footnote_segments(n.text_content().strip())
+            if not segments:continue
+            entries=[]
+            for number,value in segments:
+                if not isinstance(number,int):
+                    try:number=int(number)
+                    except ValueError:number=note_counter
+                note_counter=max(note_counter,number+1)
+                entries.append((number,value))
+            if entries:footnotes[i]=entries
+        for i,n in enumerate(nodes):
+            if i in footnotes or n.tag!="p":continue
+            if header_end and i<header_end:continue
+            # 只把紧跟在“带标记脚注”之后的短说明段并入脚注；之前的段落是正文。
+            if i-1 not in footnotes or origins[i-1]!=origins[i]:
+                continue
+            text=" ".join(n.text_content().split())
+            if text and len(text)<=120 and not re.match(r"^(?:关键词|Keywords|摘\s*要|Abstract)",text,re.I):
+                footnotes[i]=[(note_counter,text)]
+                note_counter+=1
+        front_notes=[(i,entries) for i,entries in list(footnotes.items()) if origins[i]==0]
+        front_note_nodes={i for i,_ in front_notes}
+        used_footnotes=bool(footnotes)
+        if front_notes:
+            # 首页题头的脚注紧跟题头输出，确保停在首页页底，而不是随正文流到下一页。
+            for i,entries in sorted(front_notes):
+                for number,value in entries:
+                    body.append(r"\footnotetext["+str(number)+"]{"+printable(value)+r"}")
         for i in order:
             if header_end and i < header_end:continue
             if header_text and origins[i]==0 and duplicate_of_header(nodes[i].text_content(),header_text):continue
             if toc and toc['start']<i<toc['end']:continue
             n=nodes[i]
             if i in captions.values() or i in algorithm_rows or i in sibling_members or i in figure_members:continue
+            if i in front_note_nodes:
+                continue
+            if i in footnotes:
+                for number,value in footnotes[i]:
+                    body.append(r"\footnotetext["+str(number)+"]{"+printable(value)+r"}")
+                continue
             t=n.text_content().strip()
             is_introduction=bool(re.match(r"^(?:(?:1|I)[.、．]?\s|引言|绪论|Introduction)",t,re.I)) and n.tag in ("h1","h2","h3")
             abstract_label = origins[i]==0 and re.match(r"^(?:摘要|Abstract\b)",t,re.I)
@@ -855,6 +956,8 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
 \newsavebox{\eqbox}
 \newcommand{\fitmath}[2]{\sbox{\eqbox}{$\displaystyle #1$#2}\ifdim\wd\eqbox>\linewidth\typeout{EQSCALE:\the\wd\eqbox:\the\linewidth}\resizebox{\linewidth}{!}{\usebox{\eqbox}}\else\usebox{\eqbox}\fi}
 """
+        if used_footnotes:
+            extra=extra.replace("\\raggedbottom","\\raggedbottom\n\\renewcommand{\\thefootnote}{\\fnsymbol{footnote}}",1)
         (directory/"layout-objects.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2))
         (directory/"equations.json").write_text(json.dumps(equations,ensure_ascii=False,indent=2))
         compile_paper(work,directory/"paper.pdf",body,tex_engine(),preamble.replace(r"\begin{document}",extra+r"\begin{document}"))
