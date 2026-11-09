@@ -153,6 +153,7 @@ def _plain_math_body(text):
         text = re.sub(r"(?<![A-Za-z\\])(?:%s)(?=[_^ (])" % word, "\\\\" + word, text)
     # 连续两层上下标（rho_π_ref）要嵌套，否则 LaTeX 报 Double subscript。
     text = re.sub(r"_(\\[A-Za-z]+)_([A-Za-z0-9]+)", lambda m: "_{"+m.group(1)+"_{"+m.group(2)+"}}", text)
+    text = re.sub(r"_([A-Za-z0-9]+)_([A-Za-z0-9]+)", lambda m: "_{"+m.group(1)+"_{"+m.group(2)+"}}", text)
     text = re.sub(r"\^(\\[A-Za-z]+)\^([A-Za-z0-9]+)", lambda m: "^{"+m.group(1)+"^{"+m.group(2)+"}}", text)
     # ^ 后接希腊字母再接下标的组合需要嵌套，再给普通上下标补大括号。
     text = re.sub(r"(\^)([\u0370-\u03ff])(_[A-Za-z0-9\u0370-\u03ff{]+}?)",
@@ -172,6 +173,11 @@ def wrap_plain_math(markdown):
         def wrap(match):
             run = re.sub(r"\s*\[\d+(?:\s*[–,-]\s*\d+)?\]\s*$", "", match.group(0))
             if not MATH_NEED.search(run or ""):
+                return match.group(0)
+            # URL、参考文献链接和普通下划线标识符不按公式处理。
+            if re.search(r"(?:https?://|www\.|\.html?\b|\.pdf\b|/content/|\\tag\{)", run):
+                return match.group(0)
+            if (run.count("_") >= 2 and not re.search(r"[\u0370-\u03ff^=<>≤≥+\-−×·‖{]", run)):
                 return match.group(0)
             body = _plain_math_body(run.strip())
             if sum(1 if c == "{" else -1 if c == "}" else 0 for c in body) != 0:
@@ -388,8 +394,13 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
             tag=child.tag
             if tag=="span" and "math" in child.get("class","").split():
                 val=math_tex(child.text_content()[2:-2])
+                # 行内公式里不能出现 \tag；改成紧跟在公式后的编号文字。
+                val=re.sub(r"\\tag\{([^}]*)\}", r"\\quad(\1)", val)
                 # 长行内公式在等号/逗号/斜杠处给出断点，避免整块公式超出栏宽。
-                val=re.sub(r"([=,/])", r"\1\\allowbreak{}", val)
+                val=re.sub(r"([=,/+])", r"\1\\allowbreak{}", val)
+                if len(val)>40 and "\\left" in val:
+                    from paper_translator.render.equation_split import _relax_delimiters
+                    val=_relax_delimiters(val)
                 t+=r"\("+val+r"\)"
             else:
                 v=inline(child,links and tag!="a")
@@ -703,11 +714,23 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                 else:
                     if dual and wide: body.append(r"\onecolumn")
                     rows=n.xpath(".//tr"); count=max(len(r) for r in rows)
-                    fractions = [1/count]*count
+                    weights=[]
+                    for k in range(count):
+                        longest=max((len(r[k].text_content()) for r in rows if k<len(r)), default=1)
+                        weights.append(max(4,longest))
+                    total=sum(weights) or count
+                    fractions=[max(.2,min(.55,w/total)) for w in weights]
+                    scale=sum(fractions)
+                    fractions=[f/scale for f in fractions]
                     if len(fractions) != count: raise ValueError("表格列宽数量与 Markdown 表格不符。")
                     spec = "".join(r"p{\dimexpr "+str(v)+r"\linewidth-6pt\relax}" for v in fractions)
                     table_env = "tabular" if dual and not wide else "longtable"
-                    body.append(r"\par "+cap+r"\nobreak{\small\setlength{\tabcolsep}{3pt}\begin{"+table_env+r"}{@{}"+spec+r"@{}}\hline")
+                    grid_dest=""
+                    if i in captions:
+                        mm=CAP.match(nodes[captions[i]].text_content())
+                        if mm and mm[1].lower() in ("表","table"):
+                            grid_dest=dest("grid-"+mm[2])
+                    body.append(r"\par "+cap+grid_dest+r"\nobreak{\small\setlength{\tabcolsep}{3pt}\begin{"+table_env+r"}{@{}"+spec+r"@{}}\hline")
                     for r in rows:
                         body.append(" & ".join(inline(c) for c in r)+r"\\")
                         if r[0].tag=="th":body.append(r"\hline"+(r"\endhead" if table_env=="longtable" else ""))
@@ -753,7 +776,7 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
             elif len(n)==1 and "display" in n[0].get("class","").split():
                 val=math_tex(n[0].text_content()[2:-2])
                 from paper_translator.render.equation_split import _width_em
-                tag=(re.search(r"\\tag\{(\d+)\}",val)
+                tag=(re.search(r"\\tag\{([0-9A-Za-z.]+)\}",val)
                      or re.search(r"\\(?:quad|qquad)\s*\((\d+)\)\s*$",val))
                 if tag:
                     val=val[:tag.start()]+val[tag.end():]

@@ -19,6 +19,56 @@ from paper_translator.render.ruled_algorithm import source_specs
 LABEL=re.compile(r"^(Fig(?:ure)?\.?|Table|图|表)\s*(S?\d+(?:\.\d+)*)(?=\s*[:：、]|[.．]\s+\S|\s*$|\s+(?-i:[A-Z]))",re.I)
 
 
+def _page_rows(page):
+    items=[]
+    for block in page.get_text("dict", flags=pdf.TEXTFLAGS_TEXT)["blocks"]:
+        for line in block.get("lines", []):
+            rect=pdf.Rect(line["bbox"])
+            text="".join(span["text"] for span in line["spans"]).strip()
+            if text:
+                items.append((rect,text))
+    items.sort(key=lambda item:item[0].y0)
+    rows=[]
+    for rect,text in items:
+        center=(rect.y0+rect.y1)/2
+        for row in rows:
+            if abs(row["y"]-center)<4:
+                row["cells"].append((rect,text))
+                break
+        else:
+            rows.append({"y":center,"cells":[(rect,text)]})
+    return rows
+
+
+def _is_table_row(row):
+    cells=row["cells"]
+    if len(cells)<2 or any(len(text.split())>8 for _,text in cells):
+        return False
+    xs=sorted(rect.x0 for rect,_ in cells)
+    return max((b-a) for a,b in zip(xs,xs[1:]))>8
+
+
+def borderless_table_box(page, caption):
+    """无框线表格：用图注上/下方连续的多列短行定位表体。"""
+    rows=sorted(_page_rows(page), key=lambda row:row["y"])
+    above=[row for row in rows if row["y"]<caption.y0]
+    below=[row for row in rows if row["y"]>caption.y1]
+    for sequence in (reversed(above), below):
+        run=[]
+        for row in sequence:
+            if _is_table_row(row):
+                run.append(row)
+            else:
+                break
+        if len(run)>=3:
+            box=pdf.Rect()
+            for row in run:
+                for rect,_ in row["cells"]:
+                    box|=rect
+            return box
+    return None
+
+
 def source_inventory(doc):
     objects=[]
     for page in doc:
@@ -38,6 +88,11 @@ def source_inventory(doc):
         tables=table_regions(page)
         for n,box in tables.items():
             captions.setdefault(("table",n),list(box))
+        for (kind,n),caption in list(captions.items()):
+            if kind=="table" and n not in tables:
+                box=borderless_table_box(page,pdf.Rect(caption))
+                if box is not None:
+                    tables[n]=box
         for (kind,n),caption in captions.items():
             item={"type":kind,"number":n,"page":page.number+1,"caption_box":list(caption)}
             if kind=="table" and n in tables:
@@ -233,6 +288,7 @@ GLYPH_FALLBACK = {
     "³": r"\ensuremath{{}^{3}}", "⁴": r"\ensuremath{{}^{4}}", "⁵": r"\ensuremath{{}^{5}}",
     "⁶": r"\ensuremath{{}^{6}}", "⁷": r"\ensuremath{{}^{7}}", "⁸": r"\ensuremath{{}^{8}}",
     "⁹": r"\ensuremath{{}^{9}}",
+    "❄": r"\ensuremath{\ast}",
 }
 
 
