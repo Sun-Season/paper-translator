@@ -14,7 +14,7 @@ from paper_translator.render.latex_backend import PAPER_PREAMBLE, compile_paper,
 from paper_translator.translation.vision_flow import clean_boundaries
 from paper_translator.render.ruled_algorithm import source_specs, match_rows, typeset
 from paper_translator.source.source_header import header_region, draft_header_end, locate_header
-from paper_translator.source.source_layout import source_layout, spans_gutter, abstract_columns
+from paper_translator.source.source_layout import source_layout, spans_gutter, abstract_layout
 from paper_translator.source.equation_layout import numbered_equations
 from paper_translator.source.original_tables import original_table_assets
 
@@ -416,12 +416,16 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
         t=t.replace(r"\(", r"\allowbreak\(")
         return re.sub(r"(10\.\d{4,9}/)",r"\1\\allowbreak{}",t)
     abstract_count=1
+    abstract_info={"columns":1,"narrow":False,"left_indent":0.0,"right_indent":0.0}
     widths=[];columns=[];eq_boxes={};alg_specs={};preamble=configure_preamble(PAPER_PREAMBLE, layout["document"])
     if source:
         with pymupdf.open(source) as original:
             widths=[pg.rect.width for pg in original]
             columns,(left,right)=source_layout(original)
-            abstract_count=abstract_columns(original[0],columns[0])
+            abstract_info=abstract_layout(original[0],columns[0],
+                                          text_measure=original[0].rect.width-left-right,
+                                          left=left,right=right)
+            abstract_count=abstract_info["columns"]
             override=getattr(args,"layout",None)
             if override in ("reflow","reflow-two"):
                 columns=[1 if override=="reflow" else 2]*len(columns)
@@ -433,7 +437,8 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                 if columns[pg.number]==2:
                     for num,box in numbered_equations(pg).items():
                         eq_boxes[pg.number,num]=box
-            (directory/"原稿栏式.json").write_text(json.dumps({"原页栏数":columns,"左边距_bp":left,"右边距_bp":right},ensure_ascii=False,indent=2))
+            (directory/"原稿栏式.json").write_text(json.dumps({"原页栏数":columns,"左边距_bp":left,"右边距_bp":right,
+                                                              "摘要区域":abstract_info},ensure_ascii=False,indent=2))
     with tempfile.TemporaryDirectory(prefix="vision-tex-") as tmp:
         work=Path(tmp)
         if source_tables:
@@ -755,7 +760,14 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                 value = inline(content)
                 if layout["document"]["abstract_body_style"] == "bold":
                     value = r"\textbf{" + value + "}"
-                body.append(r"\par\noindent " + label + value + r"\par")
+                prefix = ""
+                suffix = ""
+                if abstract_info.get("narrow"):
+                    # 保留原稿的窄版心：按摘要区域左右缩进排版，而不是排满整栏。
+                    prefix = (r"{\leftskip=" + f"{abstract_info['left_indent']:.2f}bp"
+                              + r"\rightskip=" + f"{abstract_info['right_indent']:.2f}bp ")
+                    suffix = "}"
+                body.append(prefix + r"\par\noindent " + label + value + r"\par" + suffix)
             elif (n.tag.startswith("h") and n.tag[1:].isdigit()) or (toc and i in toc['headings']):
                 if i==0:body.append(r"{\centering\LARGE\bfseries "+inline(n)+r"\par}\medskip")
                 else:
