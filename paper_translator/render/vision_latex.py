@@ -540,13 +540,12 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                     with pymupdf.open(source) as original_text:
                         header_text=" ".join(original_text[0].get_text(clip=box).split())
                     header_width = min(box.width, widths[0] - left - right)
-                    with pymupdf.open() as asset:
-                        page = asset.new_page(width=box.width, height=box.height)
-                        page.show_pdf_page(page.rect, original, 0, clip=box)
-                        _strip_asset_images(asset)
-                        asset.save(work/"source-header.pdf")
+                    # 题头用位图：show_pdf_page 会把整页文字（即使被裁掉）一起复制进
+                    # 裁片，PDF 阅读器仍能选中这些不可见文字，导致选区错乱。
+                    pix = original[0].get_pixmap(dpi=400, clip=box, alpha=False)
+                    pix.save(work/"source-header.png")
                     body.append(r"\par\noindent\hspace*{"+f"{max(0,box.x0-left):.3f}bp"+
-                                r"}\includegraphics[width="+f"{header_width:.3f}bp"+r"]{source-header.pdf}\par")
+                                r"}\includegraphics[width="+f"{header_width:.3f}bp"+r"]{source-header.png}\par")
                 else:
                     header_end = None
         figure_captions={};figure_groups={};figure_members=set()
@@ -971,9 +970,14 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                     printed_box = pymupdf.Rect(x-2, y-2, x+header_width+2, y+box.height*scale+2)
                     source_text = "".join(original[0].get_text(clip=box).split())
                     printed_text = "".join(output[0].get_text(clip=printed_box).split())
-                    report = {"verified": score >= .92 and source_text == printed_text,
-                              "similarity": score, "text_matches": source_text == printed_text,
-                              "source_box": list(box)}
+                    if not printed_text:
+                        # 位图题头没有文字层，改用图像相似度核对位置与缩放。
+                        report = {"verified": score >= .93, "similarity": score,
+                                  "raster": True, "source_box": list(box)}
+                    else:
+                        report = {"verified": score >= .92 and source_text == printed_text,
+                                  "similarity": score, "text_matches": source_text == printed_text,
+                                  "source_box": list(box)}
                     if report["verified"]:
                         for link in original[0].get_links():
                             rect = link["from"]
