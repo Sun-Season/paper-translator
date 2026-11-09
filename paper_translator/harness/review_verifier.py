@@ -11,7 +11,7 @@ render_evidence 是渲染器提供的实际转换记录。目录页码随重排�
 每个位置先自行读原稿图像与中文成品，检查 source_quote 与 before 的意思和版式是否有可证实的差异；若意思正确、结构可读，就 no_error。重排后原页起止位置不同、正文转到相邻成品页均正常，不能据此推断缺漏。每条意见必须判为 confirmed_error（有明确证据的真实错误）、no_error（原判断不成立或违反翻译要求）、insufficient_evidence（证据不足，必须明确缺少什么）。
 no_error 还包括纯推测、未证明有影响的偏好、检查者自己已说“无误/不列为问题”的意见；不要因为没有权威术语表就用 insufficient_evidence 保留偏好。insufficient_evidence 只用于明确存在可见异常、但图像不足以辨认其内容的情况。
 特别警惕意见声称“A被误译为A”、批评已经正确保留的内容，或要求把中文改回英文。不要为迎合检查者而接受意见。
-回答精简，每个 reason 最多两句话，禁止边推理边自我反驳。先确定最终结论，再写 JSON；reason 与 verdict 必须一致。不要寻找词义细微差别，只有真实缺失、错译、错误数值/公式、重叠截断、链接错位才 confirmed_error。同时独立比较建议 after 与原稿：不得串换参考文献条目、作者、标题、年份、否定或数字；不是 before 正确就能把 after 当正确。如果 before 本来准确，判 no_error；若确有错误但建议改错，提供有原文依据的最小 repair，或标记 repair_safe=false。confirmed_error 必须返回 repair_safe 布尔值，表示最终建议（含你修正后的 repair）是否有原文支持。对于 review 无执行动作可为 false。返回 JSON blocks，每个输入 finding 对应一个对象：id（整数）、verdict、reason（可核实依据）。可以返回 repair 对象修正可执行的 before、after、action、source_quote、criterion，但只允许有原文根据的最小修正，before 必须逐字复制 draft 的唯一连续片段，不使用省略号。
+回答精简，每个 reason 最多两句话，禁止边推理边自我反驳。先确定最终结论，再写 JSON；reason 与 verdict 必须一致。不要寻找词义细微差别，只有能用原稿和成品证实的问题才判 confirmed_error，例如漏译、错译、数值或公式错误、妨碍理解的直译、重叠截断、链接错位。直译问题须说明具体哪处指代或逻辑关系难以辨认。同时独立比较建议 after 与原稿：不得串换参考文献条目、作者、标题、年份、否定或数字；不是 before 正确就能把 after 当正确。如果 before 本来准确且可读，判 no_error；若确有错误但建议改错，提供有原文依据的最小 repair，或标记 repair_safe=false。confirmed_error 必须返回 repair_safe 布尔值，表示最终建议（含你修正后的 repair）是否有原文支持。对于 review 无执行动作可为 false。返回 JSON blocks，每个输入 finding 对应一个对象：id（整数）、verdict、reason（可核实依据）。可以返回 repair 对象修正可执行的 before、after、action、source_quote、criterion，但只允许有原文根据的最小修正，before 必须逐字复制 draft 的唯一连续片段，不使用省略号。
 若存在 previous，再返回一个 id 为 "recheck" 的对象，checks 为数组，逐项包含 id、status（resolved/remains/uncertain）、evidence。若先前问题本来就不成立，标 resolved 并明确说明撤销理由。不要改写程序验收问题。
 无新问题且无 previous 时返回空 blocks。"""
 
