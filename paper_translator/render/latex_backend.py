@@ -11,6 +11,7 @@ import tempfile
 import pymupdf as pdf
 
 from paper_translator.legacy.reading_pdf import CAPTION, REFERENCE
+from paper_translator.render.pdf_crop import isolated_pdf_crop
 
 
 def tex_engine():
@@ -51,9 +52,7 @@ def render_latex(source, raw, inline_assets, items, inline_boxes, entries, outpu
             assets += 1
             filename = f"asset-{assets}.pdf"
             doc = inline_assets if it.kind=="inline-source" else source if it.kind in ("original-header","source-equation","source-algorithm","source-table") else raw
-            with pdf.open() as clip:
-                page = clip.new_page(width=it.box.width,height=it.box.height)
-                page.show_pdf_page(page.rect,doc,it.page,clip=it.box)
+            with isolated_pdf_crop(doc,it.page,it.box) as clip:
                 clip.save(root/filename,garbage=4,deflate=True)
             size = min(width / it.box.width, (540 if width>300 else 270)/it.box.height, 1.09 if inline else 1)
             if it.kind == "panel-page":

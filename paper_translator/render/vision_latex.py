@@ -11,6 +11,7 @@ import pypandoc
 import pymupdf
 from PIL import Image
 from paper_translator.render.latex_backend import PAPER_PREAMBLE, compile_paper, escape, tex_engine
+from paper_translator.render.pdf_crop import CropIsolationError, isolated_pdf_crop
 from paper_translator.translation.vision_flow import clean_boundaries
 from paper_translator.render.ruled_algorithm import source_specs, match_rows, typeset
 from paper_translator.source.source_header import header_region, draft_header_end, locate_header
@@ -227,27 +228,6 @@ def number_headings(markdown, prefixes):
         else:
             lines.append(line)
     return "\n".join(lines)
-
-
-def _strip_asset_images(asset):
-    """裁片 PDF 只保留矢量内容；被裁在区域外的整页图片换成 1x1 占位，避免把原页图片全部嵌入。"""
-    page=asset[0]
-    placeholder=None
-    entries=[]
-    for xref,name,invoker,bbox in page.get_xobjects():
-        subtype=asset.xref_get_key(xref,"Subtype")[1]
-        if subtype=="/Image":
-            if placeholder is None:
-                placeholder=asset.get_new_xref()
-                asset.update_object(placeholder,"<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 >>")
-                asset.update_stream(placeholder,b"\xff")
-            entries.append((name,placeholder))
-        else:
-            entries.append((name,xref))
-    if placeholder is None:
-        return
-    body=" ".join(f"/{name} {xref} 0 R" for name,xref in entries)
-    asset.xref_set_key(page.xref,"Resources/XObject",f"<< {body} >>")
 
 
 FOOTNOTE_MARK = re.compile(r"\\\((?:[^)]*?)\\\)|[*†‡]|[\u00b9\u00b2\u00b3\u2074-\u2079\u2070]")
@@ -479,17 +459,23 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
             with pymupdf.open(source) as original:
                 for filename,(page,box,_) in source_tables.items():
                     asset_name=Path(filename).stem+"-original.pdf"
+                    mode="original_vector"
                     (directory/"tables").mkdir(exist_ok=True)
-                    with pymupdf.open() as asset:
-                        target=asset.new_page(width=box.width,height=box.height)
-                        target.show_pdf_page(target.rect,original,page,clip=box)
-                        asset.save(work/asset_name)
+                    try:
+                        with isolated_pdf_crop(original,page,box) as asset:
+                            asset.save(work/asset_name,garbage=4,deflate=True)
+                    except CropIsolationError:
+                        # 表内文字贴到裁区边界时无法无损失地剥离框外文字；
+                        # 退回 400 dpi 位图，保证可选中文字不越界、版面不变。
+                        asset_name=Path(filename).stem+"-original.png"
+                        mode="original_raster"
+                        original[page].get_pixmap(dpi=400,clip=box,alpha=False).save(work/asset_name)
                     shutil.copyfile(work/asset_name,directory/"tables"/asset_name)
                     tex=r"\includegraphics[width=\linewidth,height=.82\textheight,keepaspectratio]{"+asset_name+"}"
                     report=directory/"原表保留记录.json"
                     records=json.loads(report.read_text()) if report.exists() else {}
                     records[filename]={"source_page":page+1,"table":source_tables[filename][2],
-                                       "mode":"original_vector","translated_cells":False}
+                                       "mode":mode,"translated_cells":False}
                     report.write_text(json.dumps(records,ensure_ascii=False,indent=2))
                     print(f"表 {source_tables[filename][2]} 按原稿矢量还原，表内文字保留原文。",flush=True)
                     tablefile=Path(filename).with_suffix(".tex")
@@ -540,12 +526,15 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                     with pymupdf.open(source) as original_text:
                         header_text=" ".join(original_text[0].get_text(clip=box).split())
                     header_width = min(box.width, widths[0] - left - right)
-                    # 题头用位图：show_pdf_page 会把整页文字（即使被裁掉）一起复制进
-                    # 裁片，PDF 阅读器仍能选中这些不可见文字，导致选区错乱。
-                    pix = original[0].get_pixmap(dpi=400, clip=box, alpha=False)
-                    pix.save(work/"source-header.png")
+                    header_asset = "source-header.pdf"
+                    try:
+                        with isolated_pdf_crop(original,0,box) as asset:
+                            asset.save(work/header_asset,garbage=4,deflate=True)
+                    except CropIsolationError:
+                        header_asset = "source-header.png"
+                        original[0].get_pixmap(dpi=400,clip=box,alpha=False).save(work/header_asset)
                     body.append(r"\par\noindent\hspace*{"+f"{max(0,box.x0-left):.3f}bp"+
-                                r"}\includegraphics[width="+f"{header_width:.3f}bp"+r"]{source-header.png}\par")
+                                r"}\includegraphics[width="+f"{header_width:.3f}bp"+r"]{"+header_asset+r"}\par")
                 else:
                     header_end = None
         figure_captions={};figure_groups={};figure_members=set()
@@ -970,9 +959,9 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                     printed_box = pymupdf.Rect(x-2, y-2, x+header_width+2, y+box.height*scale+2)
                     source_text = "".join(original[0].get_text(clip=box).split())
                     printed_text = "".join(output[0].get_text(clip=printed_box).split())
-                    if not printed_text:
+                    if header_asset.endswith(".png"):
                         # 位图题头没有文字层，改用图像相似度核对位置与缩放。
-                        report = {"verified": score >= .93, "similarity": score,
+                        report = {"verified": score >= .93 and not printed_text, "similarity": score,
                                   "raster": True, "source_box": list(box)}
                     else:
                         report = {"verified": score >= .92 and source_text == printed_text,
@@ -981,7 +970,7 @@ def render_vision_latex(directory,source=None,args=None,*,prepared_draft=False,c
                     if report["verified"]:
                         for link in original[0].get_links():
                             rect = link["from"]
-                            if box.contains(rect) and link.get("uri", "").startswith(("https://", "http://")):
+                            if (box + (-2, -2, 2, 2)).contains(rect) and link.get("uri", "").startswith(("https://", "http://")):
                                 target = pymupdf.Rect(x+(rect.x0-box.x0)*scale, y+(rect.y0-box.y0)*scale,
                                                       x+(rect.x1-box.x0)*scale, y+(rect.y1-box.y0)*scale)
                                 output[0].insert_link({"kind":pymupdf.LINK_URI, "from":target, "uri":link["uri"]})
